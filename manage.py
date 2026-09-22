@@ -195,9 +195,12 @@ def install_backend_deps(python_cmd: str) -> None:
     ok("Dependencias del backend instaladas")
 
 
-def install_frontend_deps(node_cmd: str) -> None:
+def install_frontend_deps() -> None:
     banner("Instalando dependencias del frontend")
-    _run_visible([node_cmd, "install"], cwd=FRONTEND)
+    npm = shutil.which("npm")
+    if not npm:
+        fail("npm no está instalado o no está en el PATH.")
+    _run_visible([npm, "install"], cwd=FRONTEND)
     ok("Dependencias del frontend instaladas")
 
 
@@ -244,7 +247,10 @@ def git_init() -> None:
 
 def docker_up() -> None:
     banner("Levantando infraestructura Docker")
-    _run_visible(compose_cmd() + ["up", "-d"], cwd=ROOT)
+    probe = _run(compose_cmd() + ["up", "-d"], cwd=ROOT, capture=True, check=False)
+    if probe.returncode != 0:
+        detail = (probe.stderr or probe.stdout).strip()[-1200:]
+        fail(f"docker compose up -d falló:\n{detail}")
     ok("Infraestructura Docker levantada")
 
 
@@ -258,11 +264,11 @@ def command_setup() -> None:
     banner("SETUP LaSaTrading v5")
     ensure_dirs()
     python_cmd = check_python()
-    node_cmd = check_node()
+    check_node()
     check_docker()
     verify_environment()
     install_backend_deps(python_cmd)
-    install_frontend_deps(node_cmd)
+    install_frontend_deps()
     provision_env()
     git_init()
     docker_up()
