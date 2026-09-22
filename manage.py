@@ -95,12 +95,15 @@ def fail(text: str, code: int = 1) -> None:
     raise SystemExit(code)
 
 
-def _run(cmd, cwd=None, capture: bool = True, check: bool = True) -> subprocess.CompletedProcess:
+def _run(
+    cmd, cwd=None, capture: bool = True, check: bool = True
+) -> subprocess.CompletedProcess:
     result = subprocess.run(
         cmd,
         cwd=str(cwd) if cwd else None,
         capture_output=capture,
         text=True,
+        check=False,
     )
     if check and result.returncode != 0:
         detail = (result.stderr or result.stdout).strip() if capture else ""
@@ -118,7 +121,9 @@ def compose_cmd() -> list:
         probe = _run(candidate + ["version"], capture=True, check=False)
         if probe.returncode == 0:
             return candidate
-    fail("Docker Compose no está disponible. Instala docker-compose o usa el plugin de Docker Compose.")
+    fail(
+        "Docker Compose no está disponible. Instala docker-compose o usa el plugin de Docker Compose."
+    )
     return []
 
 
@@ -169,7 +174,9 @@ def check_docker() -> None:
         fail("Docker no está instalado o no está en el PATH.")
     probe = _run(["docker", "version", "--format", "{{.Server.Version}}"], check=False)
     if probe.returncode != 0:
-        fail("Docker está instalado pero el demonio no está corriendo. Inicia Docker y reintenta.")
+        fail(
+            "Docker está instalado pero el demonio no está corriendo. Inicia Docker y reintenta."
+        )
     compose_cmd()
 
 
@@ -191,7 +198,16 @@ def install_backend_deps(python_cmd: str) -> None:
     if not (VENV / "pyvenv.cfg").exists():
         _run_visible([python_cmd, "-m", "venv", str(VENV)])
     _run_visible([str(venv_python()), "-m", "pip", "install", "--upgrade", "pip", "-q"])
-    _run_visible([str(venv_python()), "-m", "pip", "install", "-r", str(BACKEND / "requirements.txt")])
+    _run_visible(
+        [
+            str(venv_python()),
+            "-m",
+            "pip",
+            "install",
+            "-r",
+            str(BACKEND / "requirements.txt"),
+        ]
+    )
     ok("Dependencias del backend instaladas")
 
 
@@ -224,7 +240,9 @@ def provision_env() -> None:
 
 def git_init() -> None:
     banner("Inicializando repositorio Git")
-    is_repo = _run(["git", "rev-parse", "--is-inside-work-tree"], check=False).returncode == 0
+    is_repo = (
+        _run(["git", "rev-parse", "--is-inside-work-tree"], check=False).returncode == 0
+    )
     if not is_repo:
         init = _run(["git", "init", "-b", "main"], check=False)
         if init.returncode != 0:
@@ -236,7 +254,12 @@ def git_init() -> None:
         _run(["git", "config", "user.name", "LaSaTrading"], check=False)
     _run(["git", "add", "-A"], check=False)
     commit = _run(
-        ["git", "commit", "-m", "Initial commit - Tarea 1: inicializacion del proyecto"],
+        [
+            "git",
+            "commit",
+            "-m",
+            "Initial commit - Tarea 1: inicializacion del proyecto",
+        ],
         check=False,
     )
     if commit.returncode == 0:
@@ -322,6 +345,8 @@ def http_ok(url: str, timeout: float = 2.0) -> bool:
     try:
         with urllib.request.urlopen(url, timeout=timeout):
             return True
+    except urllib.error.HTTPError:
+        return True
     except (urllib.error.URLError, OSError):
         return False
 
@@ -329,9 +354,27 @@ def http_ok(url: str, timeout: float = 2.0) -> bool:
 def service_cmd(name: str) -> list:
     python = str(venv_python())
     if name == "backend":
-        return [python, "-m", "uvicorn", "app.main:app", "--host", "127.0.0.1", "--port", "8000"]
+        return [
+            python,
+            "-m",
+            "uvicorn",
+            "app.main:app",
+            "--host",
+            "127.0.0.1",
+            "--port",
+            "8000",
+        ]
     if name == "celery":
-        return [python, "-m", "celery", "-A", "app.main.celery_app", "worker", "-l", "INFO"]
+        return [
+            python,
+            "-m",
+            "celery",
+            "-A",
+            "app.main.celery_app",
+            "worker",
+            "-l",
+            "INFO",
+        ]
     if name == "frontend":
         npm = shutil.which("npm")
         if not npm:
@@ -355,7 +398,9 @@ def start_one(name: str) -> None:
     if name in ("backend", "celery") and not venv_python().exists():
         fail("No existe backend/.venv. Ejecuta primero 'python manage.py setup'.")
     if name == "frontend" and not (FRONTEND / "node_modules").exists():
-        fail("No existe frontend/node_modules. Ejecuta primero 'python manage.py setup'.")
+        fail(
+            "No existe frontend/node_modules. Ejecuta primero 'python manage.py setup'."
+        )
 
     info = SERVICES[name]
     log_file = info["log"].open("a", buffering=1)
@@ -372,14 +417,30 @@ def start_one(name: str) -> None:
         **kwargs,
     )
     pid_file(name).write_text(str(process.pid))
-    time.sleep(4)
-    if not pid_alive(process.pid):
+
+    deadline = time.time() + 20
+    ready = False
+    if info["url"]:
+        while time.time() < deadline:
+            if not pid_alive(process.pid):
+                break
+            if http_ok(info["url"]):
+                ready = True
+                break
+            time.sleep(0.5)
+    else:
+        time.sleep(4)
+        ready = pid_alive(process.pid)
+
+    if not ready:
         pid_file(name).unlink(missing_ok=True)
         log_file.close()
         tail = ""
         if info["log"].exists():
             tail = "\n".join(info["log"].read_text().splitlines()[-12:])
-        fail(f"{name} terminó inesperadamente al arrancar.\nÚltimas líneas del log:\n{tail}")
+        fail(
+            f"{name} terminó inesperadamente al arrancar.\nÚltimas líneas del log:\n{tail}"
+        )
     ok(f"{name} iniciado (PID {process.pid})")
 
 
@@ -458,8 +519,16 @@ def command_status() -> None:
     _enable_ansi_windows()
     banner("STATUS LaSaTrading v5")
 
-    docker_ok = _run(["docker", "version", "--format", "{{.Server.Version}}"], check=False).returncode == 0
-    label = color("Docker disponible" if docker_ok else "Docker NO disponible", "green" if docker_ok else "red")
+    docker_ok = (
+        _run(
+            ["docker", "version", "--format", "{{.Server.Version}}"], check=False
+        ).returncode
+        == 0
+    )
+    label = color(
+        "Docker disponible" if docker_ok else "Docker NO disponible",
+        "green" if docker_ok else "red",
+    )
     print(f"  Infraestructura: {label}")
 
     containers = docker_status_lines()
@@ -516,7 +585,9 @@ def command_logs(name: str) -> None:
         return
     info = SERVICES.get(name)
     if not info:
-        fail(f"Servicio inválido: '{name}'. Usa 'docker', 'backend', 'celery' o 'frontend'.")
+        fail(
+            f"Servicio inválido: '{name}'. Usa 'docker', 'backend', 'celery' o 'frontend'."
+        )
     path = info["log"]
     if not path.exists():
         fail(f"No existe el archivo de log {path}. Inicia el servicio primero.")
@@ -528,18 +599,30 @@ def command_logs(name: str) -> None:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Gestión del ciclo de vida de LaSaTrading v5")
+    parser = argparse.ArgumentParser(
+        description="Gestión del ciclo de vida de LaSaTrading v5"
+    )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     subparsers.add_parser("setup", help="Instalación inicial completa del proyecto")
     subparsers.add_parser("start", help="Arranca Docker, backend, celery y frontend")
-    subparsers.add_parser("stop", help="Detiene todos los servicios y la infraestructura")
-    subparsers.add_parser("restart", help="Detiene y vuelve a arrancar todos los servicios")
+    subparsers.add_parser(
+        "stop", help="Detiene todos los servicios y la infraestructura"
+    )
+    subparsers.add_parser(
+        "restart", help="Detiene y vuelve a arrancar todos los servicios"
+    )
 
-    parser_status = subparsers.add_parser("status", help="Muestra el estado de todos los servicios")
-    parser_status.add_argument("--watch", action="store_true", help="Actualizar el estado periódicamente")
+    parser_status = subparsers.add_parser(
+        "status", help="Muestra el estado de todos los servicios"
+    )
+    parser_status.add_argument(
+        "--watch", action="store_true", help="Actualizar el estado periódicamente"
+    )
 
-    parser_logs = subparsers.add_parser("logs", help="Muestra logs de un servicio en tiempo real")
+    parser_logs = subparsers.add_parser(
+        "logs", help="Muestra logs de un servicio en tiempo real"
+    )
     parser_logs.add_argument(
         "service",
         nargs="?",
