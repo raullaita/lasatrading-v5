@@ -9,6 +9,10 @@ import {
 } from "lucide-react";
 import { Link, NavLink, Route, Routes } from "react-router-dom";
 
+import ImportDetail from "./pages/DataImport/ImportDetail";
+import ImportList from "./pages/DataImport/ImportList";
+import NewImport from "./pages/DataImport/NewImport";
+
 const navItems = [
   { to: "/", label: "Inicio", icon: LayoutDashboard },
   { to: "/import", label: "Importación", icon: Database },
@@ -116,7 +120,9 @@ export default function App() {
       <Sidebar />
       <Routes>
         <Route path="/" element={<Welcome />} />
-        <Route path="/import" element={<ModulePlaceholder module="Importación de Datos" />} />
+        <Route path="/import" element={<ImportList />} />
+        <Route path="/import/new" element={<NewImport />} />
+        <Route path="/import/:jobId" element={<ImportDetail />} />
         <Route path="/features" element={<ModulePlaceholder module="Cálculo de Features" />} />
         <Route path="/patterns" element={<ModulePlaceholder module="Detección de Patrones" />} />
         <Route path="/backtesting" element={<ModulePlaceholder module="Backtesting" />} />

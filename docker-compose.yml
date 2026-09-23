@@ -1,6 +1,6 @@
 services:
   postgres:
-    image: postgres:15
+    image: timescale/timescaledb:latest-pg15
     container_name: lasatrading-postgres
     restart: unless-stopped
     environment:

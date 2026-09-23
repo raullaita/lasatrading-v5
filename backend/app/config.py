@@ -27,6 +27,15 @@ class Settings(BaseSettings):
     CELERY_BROKER_URL: str = "redis://localhost:6379/1"
     CELERY_RESULT_BACKEND: str = "redis://localhost:6379/2"
 
+    BINANCE_API_BASE_URL: str = "https://api.binance.com"
+    BINANCE_SYMBOLS_CACHE_TTL: int = 86400
+    BINANCE_THROTTLE_MS: int = 100
+    BINANCE_MAX_RETRIES: int = 3
+    BINANCE_RETRY_BACKOFF_BASE: float = 1.0
+    BINANCE_429_RETRY_WAIT_SECONDS: int = 60
+    BINANCE_REQUEST_TIMEOUT: float = 30.0
+    BINANCE_KLINES_LIMIT: int = 1000
+
     CORS_ORIGINS: list[str] = ["http://localhost:5173"]
 
 
