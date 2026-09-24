@@ -370,7 +370,7 @@ def service_cmd(name: str) -> list:
             "-m",
             "celery",
             "-A",
-            "app.main.celery_app",
+            "app.core.celery_app",
             "worker",
             "-l",
             "INFO",

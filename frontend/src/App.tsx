@@ -6,16 +6,19 @@ import {
   LineChart,
   Rocket,
   ScanSearch,
+  TableProperties,
 } from "lucide-react";
 import { Link, NavLink, Route, Routes } from "react-router-dom";
 
 import ImportDetail from "./pages/DataImport/ImportDetail";
 import ImportList from "./pages/DataImport/ImportList";
 import NewImport from "./pages/DataImport/NewImport";
+import DataExplorer from "./pages/DataExplorer/DataExplorer";
 
 const navItems = [
   { to: "/", label: "Inicio", icon: LayoutDashboard },
   { to: "/import", label: "Importación", icon: Database },
+  { to: "/data", label: "Explorador de Datos", icon: TableProperties },
   { to: "/features", label: "Features", icon: LineChart },
   { to: "/patterns", label: "Patrones", icon: ScanSearch },
   { to: "/backtesting", label: "Backtesting", icon: Activity },
@@ -123,6 +126,7 @@ export default function App() {
         <Route path="/import" element={<ImportList />} />
         <Route path="/import/new" element={<NewImport />} />
         <Route path="/import/:jobId" element={<ImportDetail />} />
+        <Route path="/data" element={<DataExplorer />} />
         <Route path="/features" element={<ModulePlaceholder module="Cálculo de Features" />} />
         <Route path="/patterns" element={<ModulePlaceholder module="Detección de Patrones" />} />
         <Route path="/backtesting" element={<ModulePlaceholder module="Backtesting" />} />

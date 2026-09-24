@@ -1,14 +1,39 @@
+import { useState } from "react";
+import type { ChangeEvent } from "react";
+
 export interface DateRange {
   from: string;
   to: string;
 }
 
 const PRESETS = [
-  { label: "1 mes", months: 1 },
-  { label: "3 meses", months: 3 },
-  { label: "1 año", months: 12 },
-  { label: "2 años", months: 24 },
+  { key: "1m", label: "1 mes", months: 1 },
+  { key: "3m", label: "3 meses", months: 3 },
+  { key: "1y", label: "1 año", months: 12 },
+  { key: "2y", label: "2 años", months: 24 },
 ];
+
+const pad2 = (n: number) => n.toString().padStart(2, "0");
+
+function toLocalInput(d: Date): string {
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+}
+
+function startOfDay(d: Date): Date {
+  const out = new Date(d);
+  out.setHours(0, 0, 0, 0);
+  return out;
+}
+
+function addMonths(date: Date, months: number): Date {
+  const result = new Date(date);
+  const day = result.getDate();
+  result.setDate(1);
+  result.setMonth(result.getMonth() + months);
+  const lastDay = new Date(result.getFullYear(), result.getMonth() + 1, 0).getDate();
+  result.setDate(Math.min(day, lastDay));
+  return result;
+}
 
 export function DateRangePicker({
   value,
@@ -17,22 +42,45 @@ export function DateRangePicker({
   value: DateRange;
   onChange: (range: DateRange) => void;
 }) {
-  const applyPreset = (months: number) => {
+  const [activePreset, setActivePreset] = useState<string | null>(() => {
+    const match = PRESETS.find((p) => {
+      const to = new Date();
+      const from = addMonths(startOfDay(to), -p.months);
+      return toLocalInput(from) === value.from && toLocalInput(to) === value.to;
+    });
+    return match?.key ?? null;
+  });
+
+  const applyPreset = (key: string, months: number) => {
     const to = new Date();
-    const from = new Date(to);
-    from.setMonth(from.getMonth() - months);
-    onChange({ from: toISO(from), to: toISO(to) });
+    const from = addMonths(startOfDay(to), -months);
+    setActivePreset(key);
+    onChange({ from: toLocalInput(from), to: toLocalInput(to) });
   };
+
+  const onManualChange =
+    (field: "from" | "to") =>
+    (e: ChangeEvent<HTMLInputElement>) => {
+      if (!e.target.value) return;
+      setActivePreset(null);
+      onChange({ ...value, [field]: e.target.value });
+    };
+
+  const today = toLocalInput(new Date());
 
   return (
     <div className="space-y-4">
       <div className="flex gap-2">
         {PRESETS.map((p) => (
           <button
-            key={p.label}
+            key={p.key}
             type="button"
-            onClick={() => applyPreset(p.months)}
-            className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
+            onClick={() => applyPreset(p.key, p.months)}
+            className={
+              activePreset === p.key
+                ? "rounded-lg border border-indigo-600 bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white"
+                : "rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
+            }
           >
             {p.label}
           </button>
@@ -43,8 +91,9 @@ export function DateRangePicker({
           <span className="mb-1 block text-sm font-medium text-slate-700">Desde</span>
           <input
             type="date"
-            value={value.from.slice(0, 10)}
-            onChange={(e) => onChange({ ...value, from: toISO(new Date(`${e.target.value}T00:00:00`)) })}
+            value={value.from}
+            max={today}
+            onChange={onManualChange("from")}
             className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200"
           />
         </label>
@@ -52,8 +101,9 @@ export function DateRangePicker({
           <span className="mb-1 block text-sm font-medium text-slate-700">Hasta</span>
           <input
             type="date"
-            value={value.to.slice(0, 10)}
-            onChange={(e) => onChange({ ...value, to: toISO(new Date(`${e.target.value}T23:59:59`)) })}
+            value={value.to}
+            max={today}
+            onChange={onManualChange("to")}
             className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200"
           />
         </label>
@@ -63,8 +113,4 @@ export function DateRangePicker({
       )}
     </div>
   );
-}
-
-function toISO(date: Date): string {
-  return date.toISOString();
 }

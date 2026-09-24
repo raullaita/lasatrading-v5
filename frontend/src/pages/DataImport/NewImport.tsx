@@ -19,10 +19,22 @@ const STEPS = [
   { title: "Resumen", description: "Revisa y confirma" },
 ];
 
-function isoDaysAgo(days: number): string {
+function pad2(n: number): string {
+  return n.toString().padStart(2, "0");
+}
+
+function toInputDate(d: Date): string {
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+}
+
+function todayInput(): string {
+  return toInputDate(new Date());
+}
+
+function daysAgoInput(days: number): string {
   const d = new Date();
   d.setDate(d.getDate() - days);
-  return d.toISOString();
+  return toInputDate(d);
 }
 
 export default function NewImport() {
@@ -31,7 +43,10 @@ export default function NewImport() {
   const [available, setAvailable] = useState<BinanceSymbol[]>([]);
   const [symbols, setSymbols] = useState<string[]>([]);
   const [timeframes, setTimeframes] = useState<string[]>(["1h", "4h", "1d"]);
-  const [range, setRange] = useState<DateRange>({ from: isoDaysAgo(90), to: new Date().toISOString() });
+  const [range, setRange] = useState<DateRange>({
+    from: daysAgoInput(365),
+    to: todayInput(),
+  });
   const [mode, setMode] = useState<ImportMode>("merge");
   const [submitting, setSubmitting] = useState(false);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
@@ -62,8 +77,8 @@ export default function NewImport() {
     const config: ImportConfig = {
       symbols,
       timeframes,
-      date_from: range.from,
-      date_to: range.to,
+      date_from: new Date(`${range.from}T00:00:00`).toISOString(),
+      date_to: new Date(`${range.to}T23:59:59.999`).toISOString(),
       import_mode: mode,
     };
     setSubmitting(true);

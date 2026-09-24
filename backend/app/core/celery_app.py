@@ -18,4 +18,9 @@ celery_app.conf.update(
     result_serializer="json",
     accept_content=["json"],
     broker_connection_retry_on_startup=True,
+    task_acks_late=True,
+    task_reject_on_worker_lost=True,
+    worker_prefetch_multiplier=1,
+    task_soft_time_limit=23 * 3600,
+    task_time_limit=24 * 3600,
 )

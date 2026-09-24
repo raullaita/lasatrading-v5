@@ -153,6 +153,42 @@ class ImportService:
             db.refresh(new_job)
             return new_job.id
 
+    def requeue_pending(self, job_id: uuid.UUID) -> int:
+        with SessionLocal() as db:
+            job = db.get(ImportJob, job_id)
+            if job is None:
+                return 0
+            combos = list(
+                db.scalars(
+                    select(ImportJobCombination).where(
+                        ImportJobCombination.job_id == job_id,
+                        ImportJobCombination.status.in_(
+                            [
+                                ImportStatus.PENDING.value,
+                                ImportStatus.PROCESSING.value,
+                            ]
+                        ),
+                    )
+                ).all()
+            )
+            for combo in combos:
+                combo.status = ImportStatus.PENDING.value
+                combo.started_at = None
+                combo.finished_at = None
+                combo.error_message = None
+            job.status = ImportStatus.PENDING.value
+            job.started_at = None
+            job.finished_at = None
+            self._log(
+                db,
+                job_id,
+                None,
+                LogLevel.INFO,
+                f"Job reenviado a la cola: {len(combos)} combinaciones a pendiente",
+            )
+            db.commit()
+            return len(combos)
+
     async def execute_job(self, job_id: uuid.UUID) -> None:
         client = BinanceClient()
         try:

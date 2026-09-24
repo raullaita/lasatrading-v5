@@ -1,4 +1,5 @@
 import type { ImportConfig } from "../../../types/dataImport";
+import { formatDateEs } from "../../../utils/format";
 
 export function ImportSummary({
   config,
@@ -17,9 +18,7 @@ export function ImportSummary({
       <SummaryRow label="Timeframes" value={config.timeframes.join(", ") || "—"} />
       <SummaryRow
         label="Período"
-        value={`${new Date(config.date_from).toLocaleDateString("es")} → ${new Date(
-          config.date_to,
-        ).toLocaleDateString("es")}`}
+        value={`${formatDateEs(config.date_from)} → ${formatDateEs(config.date_to)}`}
       />
       <SummaryRow
         label="Modo"

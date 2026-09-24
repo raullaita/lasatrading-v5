@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 
-import { Ban, Database, Loader2, RefreshCcw, Plus } from "lucide-react";
+import { Ban, Database, Loader2, Plus, RefreshCcw, Send } from "lucide-react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 
 import { CombinationList } from "../../components/DataImport/CombinationList";
@@ -9,9 +9,10 @@ import { PreviewModal } from "../../components/DataImport/PreviewModal";
 import { ProgressBar } from "../../components/DataImport/ProgressBar";
 import { StatusBadge } from "../../components/DataImport/StatusBadge";
 import { StatsPanel } from "../../components/DataImport/StatsPanel";
-import { cancelImport, getJobStatus, getStats, retryJob } from "../../services/api";
+import { cancelImport, getJobStatus, getStats, requeueJob, retryJob } from "../../services/api";
 import { connectJobLogs, disconnectJobLogs } from "../../services/websocket";
 import type { ImportJob, ImportLog, ImportStats } from "../../types/dataImport";
+import { formatDateEs } from "../../utils/format";
 
 const TERMINAL = new Set(["completed", "failed", "cancelled"]);
 
@@ -26,6 +27,7 @@ export default function ImportDetail() {
   const [error, setError] = useState<string | null>(null);
   const [cancelling, setCancelling] = useState(false);
   const [retrying, setRetrying] = useState(false);
+  const [requeuing, setRequeuing] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
   const disposedRef = useRef(false);
 
@@ -112,6 +114,24 @@ export default function ImportDetail() {
     }
   };
 
+  const onRequeue = async () => {
+    if (
+      !window.confirm(
+        "Este job está pendiente o sin progreso. ¿Reenviarlo a la cola de Celery?",
+      )
+    ) {
+      return;
+    }
+    setRequeuing(true);
+    try {
+      const updated = await requeueJob(jobId);
+      setJob(updated);
+    } catch {
+      setError("No se pudo reenviar el job a la cola.");
+      setRequeuing(false);
+    }
+  };
+
   if (loading) {
     return (
       <main className="flex h-screen flex-1 items-center justify-center bg-slate-50">
@@ -134,6 +154,14 @@ export default function ImportDetail() {
   }
 
   const live = !TERMINAL.has(job.status);
+  const startedAt = job.started_at ? new Date(job.started_at).getTime() : null;
+  const staleProcessing =
+    job.status === "processing" &&
+    startedAt !== null &&
+    Date.now() - startedAt > 5 * 60_000 &&
+    job.completed_combinations === 0 &&
+    job.failed_combinations === 0;
+  const needsRequeue = job.status === "pending" || staleProcessing;
   const progress =
     job.total_combinations > 0
       ? ((job.completed_combinations + job.failed_combinations) / job.total_combinations) * 100
@@ -154,15 +182,28 @@ export default function ImportDetail() {
             </h1>
           </div>
           {live && (
-            <button
-              type="button"
-              onClick={() => void onCancel()}
-              disabled={cancelling}
-              className="inline-flex items-center gap-2 rounded-lg border border-rose-300 px-3 py-1.5 text-sm font-medium text-rose-600 hover:bg-rose-50 disabled:opacity-50"
-            >
-              <Ban className="h-4 w-4" />
-              {cancelling ? "Cancelando…" : "Cancelar"}
-            </button>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => void onCancel()}
+                disabled={cancelling}
+                className="inline-flex items-center gap-2 rounded-lg border border-rose-300 px-3 py-1.5 text-sm font-medium text-rose-600 hover:bg-rose-50 disabled:opacity-50"
+              >
+                <Ban className="h-4 w-4" />
+                {cancelling ? "Cancelando…" : "Cancelar"}
+              </button>
+              {needsRequeue && (
+                <button
+                  type="button"
+                  onClick={() => void onRequeue()}
+                  disabled={requeuing}
+                  className="inline-flex items-center gap-2 rounded-lg border border-emerald-300 bg-white px-3 py-1.5 text-sm font-medium text-emerald-700 hover:bg-emerald-50 disabled:opacity-50"
+                >
+                  <Send className={`h-4 w-4 ${requeuing ? "animate-pulse" : ""}`} />
+                  {requeuing ? "Reenviando…" : "Reenviar a cola"}
+                </button>
+              )}
+            </div>
           )}
           {!live && (
             <div className="flex flex-wrap items-center gap-2">
@@ -199,8 +240,8 @@ export default function ImportDetail() {
 
         <div className="mb-4 grid grid-cols-3 gap-4">
           <Meta label="Modo" value={job.import_mode} />
-          <Meta label="Fecha inicial" value={new Date(job.date_from).toLocaleDateString("es")} />
-          <Meta label="Fecha final" value={new Date(job.date_to).toLocaleDateString("es")} />
+          <Meta label="Fecha inicial" value={formatDateEs(job.date_from)} />
+          <Meta label="Fecha final" value={formatDateEs(job.date_to)} />
         </div>
 
         {live && (
