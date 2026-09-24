@@ -7,6 +7,10 @@ from pydantic import BaseModel, Field, model_validator
 from app.modules.data_import.models import ImportMode, ImportStatus
 
 
+class BatchDeleteBody(BaseModel):
+    job_ids: list[UUID]
+
+
 class ImportConfig(BaseModel):
     symbols: list[str] = Field(min_length=1)
     timeframes: list[str] = Field(min_length=1)

@@ -19,6 +19,8 @@ export interface JobListQuery {
   status?: string;
   symbol?: string;
   timeframe?: string;
+  sort_by?: string;
+  sort_order?: "asc" | "desc";
   page?: number;
   page_size?: number;
 }
@@ -63,5 +65,20 @@ export async function cancelImport(jobId: string): Promise<ImportJob> {
 
 export async function retryJob(jobId: string): Promise<StartImportResponse> {
   const { data } = await apiClient.post<StartImportResponse>(`/retry/${jobId}`);
+  return data;
+}
+
+export async function requeueJob(jobId: string): Promise<ImportJob> {
+  const { data } = await apiClient.post<ImportJob>(`/requeue/${jobId}`);
+  return data;
+}
+
+export async function deleteJob(jobId: string) {
+  const { data } = await apiClient.delete(`/${jobId}`);
+  return data;
+}
+
+export async function deleteJobsBatch(jobIds: string[]) {
+  const { data } = await apiClient.delete(`/batch`, { data: { job_ids: jobIds } });
   return data;
 }

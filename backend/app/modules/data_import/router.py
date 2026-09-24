@@ -2,6 +2,7 @@ import asyncio
 import contextlib
 import uuid
 from datetime import datetime, timezone
+from typing import Literal
 
 from fastapi import (
     APIRouter,
@@ -11,7 +12,7 @@ from fastapi import (
     WebSocket,
     WebSocketDisconnect,
 )
-from sqlalchemy import func, select
+from sqlalchemy import Text, cast, delete, func, select
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
@@ -25,6 +26,7 @@ from app.modules.data_import.models import (
     LogLevel,
 )
 from app.modules.data_import.schemas import (
+    BatchDeleteBody,
     BinanceSymbolOut,
     ImportConfig,
     JobListOut,
@@ -43,6 +45,17 @@ TERMINAL_STATUSES = {
     ImportStatus.COMPLETED.value,
     ImportStatus.FAILED.value,
     ImportStatus.CANCELLED.value,
+}
+
+SORTABLE_COLUMNS = {
+    "created_at": ImportJob.created_at,
+    "status": ImportJob.status,
+    "date_from": ImportJob.date_from,
+    "date_to": ImportJob.date_to,
+    "finished_at": ImportJob.finished_at,
+    "total_candles_inserted": ImportJob.total_candles_inserted,
+    "completed_combinations": ImportJob.completed_combinations,
+    "failed_combinations": ImportJob.failed_combinations,
 }
 
 
@@ -66,6 +79,8 @@ def list_jobs(
     status: str | None = Query(default=None),
     symbol: str | None = Query(default=None),
     timeframe: str | None = Query(default=None),
+    sort_by: str = Query(default="created_at"),
+    sort_order: Literal["asc", "desc"] = Query(default="desc"),
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, ge=1, le=100),
 ):
@@ -73,14 +88,23 @@ def list_jobs(
     if status:
         filters.append(ImportJob.status == status)
     if symbol:
-        filters.append(ImportJob.symbols.contains([symbol]))
+        target = symbol.strip().upper()
+        filters.append(func.upper(cast(ImportJob.symbols, Text)).contains(target))
     if timeframe:
         filters.append(ImportJob.timeframes.contains([timeframe]))
+    column = SORTABLE_COLUMNS.get(sort_by)
+    if column is None:
+        raise HTTPException(
+            status_code=400, detail=f"Columna de ordenación inválida: {sort_by}"
+        )
+    order = (
+        column.asc().nulls_last() if sort_order == "asc" else column.desc().nulls_last()
+    )
     total = db.scalar(select(func.count()).select_from(ImportJob).where(*filters)) or 0
     jobs = db.scalars(
         select(ImportJob)
         .where(*filters)
-        .order_by(ImportJob.created_at.desc())
+        .order_by(order)
         .offset((page - 1) * page_size)
         .limit(page_size)
     ).all()
@@ -232,6 +256,37 @@ def retry_job(job_id: uuid.UUID, db: Session = Depends(get_db)):
         )
     tasks.run_import_job.delay(str(new_job_id))
     return StartImportOut(job_id=new_job_id)
+
+
+@router.post("/requeue/{job_id}", response_model=JobStatusOut)
+def requeue_job(job_id: uuid.UUID, db: Session = Depends(get_db)):
+    job = _job_or_404(db, job_id)
+    if job.status in TERMINAL_STATUSES:
+        raise HTTPException(
+            status_code=400,
+            detail="El job está en estado terminal; usa retry para reintentar fallidas",
+        )
+    ImportService().requeue_pending(job_id)
+    tasks.run_import_job.delay(str(job_id))
+    db.refresh(job)
+    return job
+
+
+@router.delete("/batch")
+def delete_jobs_batch(body: BatchDeleteBody, db: Session = Depends(get_db)):
+    if not body.job_ids:
+        raise HTTPException(status_code=400, detail="job_ids vacío")
+    result = db.execute(delete(ImportJob).where(ImportJob.id.in_(body.job_ids)))
+    db.commit()
+    return {"deleted_count": result.rowcount or 0}
+
+
+@router.delete("/{job_id}")
+def delete_job(job_id: uuid.UUID, db: Session = Depends(get_db)):
+    job = _job_or_404(db, job_id)
+    db.delete(job)
+    db.commit()
+    return {"deleted": True, "job_id": str(job_id)}
 
 
 @router.websocket("/logs/{job_id}")
