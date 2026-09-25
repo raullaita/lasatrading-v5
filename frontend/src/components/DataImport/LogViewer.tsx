@@ -19,7 +19,7 @@ export function LogViewer({ logs, maxLines = 500 }: { logs: ImportLog[]; maxLine
   const visible = logs.slice(-maxLines);
 
   return (
-    <div className="rounded-xl border border-slate-200 bg-slate-950">
+    <div className="rounded-xl border border-slate-200 bg-slate-950 dark:border-slate-800">
       <div className="flex items-center justify-between border-b border-slate-800 px-4 py-2">
         <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Logs en vivo</p>
         <span className="text-xs text-slate-500">

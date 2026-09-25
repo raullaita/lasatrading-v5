@@ -28,8 +28,9 @@ def data_summary(db: Session = Depends(get_db)):
         .group_by(Candle.symbol, Candle.timeframe)
         .order_by(Candle.symbol, Candle.timeframe)
     ).all()
-    return DataSummaryOut(
-        groups=[
+    groups = []
+    for symbol, timeframe, total_candles, first_timestamp, last_timestamp in rows:
+        groups.append(
             DataGroupSummary(
                 symbol=symbol,
                 timeframe=timeframe,
@@ -37,10 +38,8 @@ def data_summary(db: Session = Depends(get_db)):
                 first_timestamp=first_timestamp,
                 last_timestamp=last_timestamp,
             )
-            for symbol, timeframe, total_candles, first_timestamp, last_timestamp
-            in rows
-        ]
-    )
+        )
+    return DataSummaryOut(groups=groups)
 
 
 @router.get("/preview", response_model=DataPreviewOut)

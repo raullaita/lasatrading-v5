@@ -42,14 +42,12 @@ export function DeleteJobModal({
 
         <p className="mb-2 text-sm text-slate-700 dark:text-slate-300">
           ¿Estás seguro? Se borrará{count === 1 ? "á" : "án"} el{" "}
-          {count === 1 ? "job" : "s"} seleccionado{count === 1 ? "" : "s"} junto
-          con sus combinaciones y logs. Las velas asociadas no se eliminarán.
-          Esta acción no se puede deshacer.
+          {count === 1 ? "job" : "s"} seleccionado{count === 1 ? "" : "s"} y sus datos de
+          features calculados. Esta acción no se puede deshacer.
         </p>
 
         <label className="block text-sm font-medium text-slate-600 dark:text-slate-400">
-          Escribe <span className="font-bold text-rose-600 dark:text-rose-400">BORRAR</span>{" "}
-          para confirmar:
+          Escribe <span className="font-bold text-rose-600 dark:text-rose-400">BORRAR</span> para confirmar:
         </label>
         <input
           type="text"

@@ -93,10 +93,10 @@ export default function NewImport() {
   };
 
   return (
-    <main className="h-screen flex-1 overflow-y-auto bg-slate-50 p-8">
+    <main className="h-screen flex-1 overflow-y-auto bg-slate-50 p-8 dark:bg-slate-950">
       <div className="mx-auto w-full max-w-2xl">
-        <h1 className="text-2xl font-bold text-slate-900">Nueva importación</h1>
-        <p className="mb-6 text-sm text-slate-500">{STEPS[step].description}</p>
+        <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">Nueva importación</h1>
+        <p className="mb-6 text-sm text-slate-500 dark:text-slate-400">{STEPS[step].description}</p>
 
         <ol className="mb-8 flex items-center gap-2">
           {STEPS.map((s, i) => (
@@ -107,19 +107,19 @@ export default function NewImport() {
                 className={`flex h-8 w-8 items-center justify-center rounded-full text-sm font-semibold ${
                   i <= step
                     ? "bg-indigo-600 text-white"
-                    : "border border-slate-300 bg-white text-slate-400"
+                    : "border border-slate-300 bg-white text-slate-400 dark:border-slate-700 dark:bg-slate-900"
                 }`}
               >
                 {i + 1}
               </button>
               {i < STEPS.length - 1 && (
-                <span className={i < step ? "h-0.5 w-6 bg-indigo-600" : "h-0.5 w-6 bg-slate-200"} />
+                <span className={i < step ? "h-0.5 w-6 bg-indigo-600" : "h-0.5 w-6 bg-slate-200 dark:bg-slate-800"} />
               )}
             </li>
           ))}
         </ol>
 
-        <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+        <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
           {step === 0 && <SymbolSelector available={available} selected={symbols} onToggle={toggleSymbol} />}
           {step === 1 && <TimeframeSelector selected={timeframes} onChange={setTimeframes} />}
           {step === 2 && <DateRangePicker value={range} onChange={setRange} />}
@@ -128,12 +128,12 @@ export default function NewImport() {
             <ImportSummary config={{ symbols, timeframes, date_from: range.from, date_to: range.to, import_mode: mode }} combinations={totalCombinations} />
           )}
 
-          <div className="mt-8 flex items-center justify-between border-t border-slate-100 pt-5">
+          <div className="mt-8 flex items-center justify-between border-t border-slate-100 pt-5 dark:border-slate-800">
             <button
               type="button"
               onClick={() => setStep((s) => s - 1)}
               disabled={step === 0}
-              className="inline-flex items-center gap-2 rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 disabled:opacity-40"
+              className="inline-flex items-center gap-2 rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 disabled:opacity-40 dark:border-slate-700 dark:text-slate-300"
             >
               <ArrowLeft className="h-4 w-4" />
               Anterior
@@ -161,7 +161,7 @@ export default function NewImport() {
             )}
           </div>
           {statusMessage && (
-            <p className="mt-4 rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">
+            <p className="mt-4 rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700 dark:border-rose-900 dark:bg-rose-950/40 dark:text-rose-400">
               {statusMessage}
             </p>
           )}

@@ -4,12 +4,18 @@ import {
   Database,
   LayoutDashboard,
   LineChart,
+  Moon,
   Rocket,
   ScanSearch,
+  Sun,
   TableProperties,
 } from "lucide-react";
 import { Link, NavLink, Route, Routes } from "react-router-dom";
 
+import { useTheme } from "./theme/theme";
+import FeatureDetail from "./pages/Features/FeatureDetail";
+import FeatureList from "./pages/Features/FeatureList";
+import NewFeatureJob from "./pages/Features/NewFeatureJob";
 import ImportDetail from "./pages/DataImport/ImportDetail";
 import ImportList from "./pages/DataImport/ImportList";
 import NewImport from "./pages/DataImport/NewImport";
@@ -19,7 +25,7 @@ const navItems = [
   { to: "/", label: "Inicio", icon: LayoutDashboard },
   { to: "/import", label: "Importación", icon: Database },
   { to: "/data", label: "Explorador de Datos", icon: TableProperties },
-  { to: "/features", label: "Features", icon: LineChart },
+  { to: "/features", label: "Indicadores", icon: LineChart },
   { to: "/patterns", label: "Patrones", icon: ScanSearch },
   { to: "/backtesting", label: "Backtesting", icon: Activity },
   { to: "/alerts", label: "Alertas", icon: Bell },
@@ -35,15 +41,17 @@ const modules = [
 ];
 
 function Sidebar() {
+  const { theme, toggle } = useTheme();
+
   return (
-    <aside className="flex h-screen w-64 flex-col border-r border-slate-200 bg-white">
-      <div className="flex items-center gap-3 border-b border-slate-200 px-6 py-5">
+    <aside className="flex h-screen w-64 flex-col border-r border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
+      <div className="flex items-center gap-3 border-b border-slate-200 px-6 py-5 dark:border-slate-800">
         <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-indigo-600 text-white">
           <Rocket className="h-5 w-5" />
         </div>
         <div>
-          <p className="text-sm font-semibold text-slate-900">LaSaTrading v5</p>
-          <p className="text-xs text-slate-500">Plataforma de trading</p>
+          <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">LaSaTrading v5</p>
+          <p className="text-xs text-slate-500 dark:text-slate-400">Plataforma de trading</p>
         </div>
       </div>
       <nav className="flex-1 space-y-1 px-3 py-4">
@@ -55,8 +63,8 @@ function Sidebar() {
             className={({ isActive }) =>
               `flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
                 isActive
-                  ? "bg-indigo-50 text-indigo-700"
-                  : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+                  ? "bg-indigo-50 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300"
+                  : "text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-100"
               }`
             }
           >
@@ -65,8 +73,17 @@ function Sidebar() {
           </NavLink>
         ))}
       </nav>
-      <div className="border-t border-slate-200 px-6 py-4">
-        <p className="text-xs text-slate-500">Entorno: desarrollo</p>
+      <div className="border-t border-slate-200 px-4 py-4 dark:border-slate-800">
+        <button
+          type="button"
+          onClick={toggle}
+          className="flex w-full items-center justify-between rounded-lg px-2 py-2 text-xs font-medium text-slate-500 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-100"
+          title={theme === "dark" ? "Cambiar a modo claro" : "Cambiar a modo oscuro"}
+        >
+          <span>Modo {theme === "dark" ? "oscuro" : "claro"}</span>
+          {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+        </button>
+        <p className="mt-2 px-2 text-xs text-slate-500 dark:text-slate-400">Entorno: desarrollo</p>
       </div>
     </aside>
   );
@@ -74,17 +91,17 @@ function Sidebar() {
 
 function Welcome() {
   return (
-    <main className="flex h-screen flex-1 items-center justify-center bg-slate-50 p-8">
-      <div className="mx-auto w-full max-w-2xl rounded-2xl border border-slate-200 bg-white p-10 text-center shadow-sm">
+    <main className="flex h-screen flex-1 items-center justify-center bg-slate-50 p-8 dark:bg-slate-950">
+      <div className="mx-auto w-full max-w-2xl rounded-2xl border border-slate-200 bg-white p-10 text-center shadow-sm dark:border-slate-800 dark:bg-slate-900">
         <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-2xl bg-indigo-600 text-white">
           <Rocket className="h-8 w-8" />
         </div>
-        <h1 className="text-2xl font-bold text-slate-900">LaSaTrading v5</h1>
-        <p className="mt-2 text-slate-600">
+        <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">LaSaTrading v5</h1>
+        <p className="mt-2 text-slate-600 dark:text-slate-300">
           El sistema se ha inicializado correctamente. Backend y frontend están operativos y
           listos para el desarrollo.
         </p>
-        <div className="mt-6 flex items-center justify-center gap-2 rounded-xl bg-emerald-50 py-3 text-sm font-medium text-emerald-700">
+        <div className="mt-6 flex items-center justify-center gap-2 rounded-xl bg-emerald-50 py-3 text-sm font-medium text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400">
           <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-emerald-500" />
           Servicios activos
         </div>
@@ -92,10 +109,12 @@ function Welcome() {
           {modules.map(({ label, icon: Icon }) => (
             <div
               key={label}
-              className="flex items-center gap-3 rounded-xl border border-slate-200 px-4 py-3"
+              className="flex items-center gap-3 rounded-xl border border-slate-200 px-4 py-3 dark:border-slate-800"
             >
               <Icon className="h-4 w-4 shrink-0 text-indigo-600" />
-              <span className="text-xs font-medium text-slate-700">{label}</span>
+              <span className="text-xs font-medium text-slate-700 dark:text-slate-300">
+                {label}
+              </span>
             </div>
           ))}
         </div>
@@ -106,10 +125,10 @@ function Welcome() {
 
 function ModulePlaceholder({ module }: { module: string }) {
   return (
-    <main className="flex h-screen flex-1 items-center justify-center bg-slate-50 p-8">
-      <div className="mx-auto w-full max-w-lg rounded-2xl border border-slate-200 bg-white p-10 text-center shadow-sm">
-        <h1 className="text-xl font-bold text-slate-900">{module}</h1>
-        <p className="mt-2 text-sm text-slate-600">
+    <main className="flex h-screen flex-1 items-center justify-center bg-slate-50 p-8 dark:bg-slate-950">
+      <div className="mx-auto w-full max-w-lg rounded-2xl border border-slate-200 bg-white p-10 text-center shadow-sm dark:border-slate-800 dark:bg-slate-900">
+        <h1 className="text-xl font-bold text-slate-900 dark:text-slate-100">{module}</h1>
+        <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
           Este módulo se implementará en futuras tareas del proyecto.
         </p>
       </div>
@@ -119,7 +138,7 @@ function ModulePlaceholder({ module }: { module: string }) {
 
 export default function App() {
   return (
-    <div className="flex min-h-screen bg-slate-50">
+    <div className="flex min-h-screen bg-slate-50 dark:bg-slate-950">
       <Sidebar />
       <Routes>
         <Route path="/" element={<Welcome />} />
@@ -127,17 +146,22 @@ export default function App() {
         <Route path="/import/new" element={<NewImport />} />
         <Route path="/import/:jobId" element={<ImportDetail />} />
         <Route path="/data" element={<DataExplorer />} />
-        <Route path="/features" element={<ModulePlaceholder module="Cálculo de Features" />} />
+        <Route path="/features" element={<FeatureList />} />
+        <Route path="/features/new" element={<NewFeatureJob />} />
+        <Route path="/features/:jobId" element={<FeatureDetail />} />
         <Route path="/patterns" element={<ModulePlaceholder module="Detección de Patrones" />} />
         <Route path="/backtesting" element={<ModulePlaceholder module="Backtesting" />} />
         <Route path="/alerts" element={<ModulePlaceholder module="Alertas" />} />
         <Route
           path="*"
           element={
-            <main className="flex h-screen flex-1 items-center justify-center bg-slate-50 p-8">
+            <main className="flex h-screen flex-1 items-center justify-center bg-slate-50 p-8 dark:bg-slate-950">
               <div className="text-center">
-                <p className="text-lg font-semibold text-slate-900">404</p>
-                <Link to="/" className="mt-2 inline-block text-sm text-indigo-600 hover:underline">
+                <p className="text-lg font-semibold text-slate-900 dark:text-slate-100">404</p>
+                <Link
+                  to="/"
+                  className="mt-2 inline-block text-sm text-indigo-600 hover:underline dark:text-indigo-400"
+                >
                   Volver al inicio
                 </Link>
               </div>

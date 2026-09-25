@@ -50,23 +50,27 @@ export function PreviewModal({
       onClick={onClose}
     >
       <div
-        className="flex max-h-[85vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl bg-white shadow-xl"
+        className="flex max-h-[85vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl bg-white shadow-xl dark:bg-slate-900"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between border-b border-slate-200 px-5 py-3">
-          <h2 className="text-lg font-bold text-slate-900">Velas importadas ({rows.length})</h2>
-          <button type="button" onClick={onClose} className="rounded-lg p-1 text-slate-400 hover:bg-slate-100">
+        <div className="flex items-center justify-between border-b border-slate-200 px-5 py-3 dark:border-slate-800">
+          <h2 className="text-lg font-bold text-slate-900 dark:text-slate-100">Velas importadas ({rows.length})</h2>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800"
+          >
             <X className="h-5 w-5" />
           </button>
         </div>
 
-        <div className="flex flex-wrap gap-3 border-b border-slate-100 px-5 py-3">
+        <div className="flex flex-wrap gap-3 border-b border-slate-100 px-5 py-3 dark:border-slate-800">
           <label className="block">
-            <span className="mb-1 block text-xs font-medium text-slate-500">Símbolo</span>
+            <span className="mb-1 block text-xs font-medium text-slate-500 dark:text-slate-400">Símbolo</span>
             <select
               value={symbol}
               onChange={(e) => setSymbol(e.target.value)}
-              className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm focus:border-indigo-500 focus:outline-none"
+              className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm focus:border-indigo-500 focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
             >
               <option value="">Todos</option>
               {symbols.map((s) => (
@@ -77,11 +81,11 @@ export function PreviewModal({
             </select>
           </label>
           <label className="block">
-            <span className="mb-1 block text-xs font-medium text-slate-500">Timeframe</span>
+            <span className="mb-1 block text-xs font-medium text-slate-500 dark:text-slate-400">Timeframe</span>
             <select
               value={timeframe}
               onChange={(e) => setTimeframe(e.target.value)}
-              className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm focus:border-indigo-500 focus:outline-none"
+              className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm focus:border-indigo-500 focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
             >
               <option value="">Todos</option>
               {timeframes.map((tf) => (
@@ -99,14 +103,14 @@ export function PreviewModal({
               <Loader2 className="h-6 w-6 animate-spin text-indigo-600" />
             </div>
           ) : error ? (
-            <p className="px-5 py-10 text-center text-sm text-rose-600">{error}</p>
+            <p className="px-5 py-10 text-center text-sm text-rose-600 dark:text-rose-400">{error}</p>
           ) : rows.length === 0 ? (
-            <p className="px-5 py-10 text-center text-sm text-slate-500">
+            <p className="px-5 py-10 text-center text-sm text-slate-500 dark:text-slate-400">
               Sin velas para los filtros seleccionados.
             </p>
           ) : (
             <table className="w-full text-left text-xs">
-              <thead className="sticky top-0 border-b border-slate-200 bg-slate-50 text-slate-500 uppercase">
+              <thead className="sticky top-0 border-b border-slate-200 bg-slate-50 text-slate-500 uppercase dark:border-slate-800 dark:bg-slate-800 dark:text-slate-400">
                 <tr>
                   <th className="px-4 py-2">Fecha (UTC)</th>
                   <th className="px-4 py-2">Símbolo</th>
@@ -118,19 +122,19 @@ export function PreviewModal({
                   <th className="px-4 py-2 text-right">Volume</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                 {rows.map((r) => (
                   <tr key={`${r.symbol}-${r.timeframe}-${r.timestamp}`}>
-                    <td className="px-4 py-1.5 tabular-nums text-slate-600">
+                    <td className="px-4 py-1.5 tabular-nums text-slate-600 dark:text-slate-300">
                       {new Date(r.timestamp).toLocaleString("es")}
                     </td>
-                    <td className="px-4 py-1.5 font-medium text-slate-800">{r.symbol}</td>
-                    <td className="px-4 py-1.5 text-slate-500">{r.timeframe}</td>
+                    <td className="px-4 py-1.5 font-medium text-slate-800 dark:text-slate-200">{r.symbol}</td>
+                    <td className="px-4 py-1.5 text-slate-500 dark:text-slate-400">{r.timeframe}</td>
                     <td className="px-4 py-1.5 text-right tabular-nums">{fmt(r.open)}</td>
                     <td className="px-4 py-1.5 text-right tabular-nums">{fmt(r.high)}</td>
                     <td className="px-4 py-1.5 text-right tabular-nums">{fmt(r.low)}</td>
                     <td className="px-4 py-1.5 text-right tabular-nums">{fmt(r.close)}</td>
-                    <td className="px-4 py-1.5 text-right tabular-nums text-slate-500">{fmt(r.volume)}</td>
+                    <td className="px-4 py-1.5 text-right tabular-nums text-slate-500 dark:text-slate-400">{fmt(r.volume)}</td>
                   </tr>
                 ))}
               </tbody>

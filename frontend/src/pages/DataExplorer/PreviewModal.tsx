@@ -44,37 +44,37 @@ export default function PreviewModal({
       onClick={onClose}
     >
       <div
-        className="flex max-h-[85vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl bg-white shadow-xl"
+        className="flex max-h-[85vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl bg-white shadow-xl dark:bg-slate-900"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between border-b border-slate-200 px-5 py-3">
-          <h2 className="text-lg font-bold text-slate-900">
+        <div className="flex items-center justify-between border-b border-slate-200 px-5 py-3 dark:border-slate-800">
+          <h2 className="text-lg font-bold text-slate-900 dark:text-slate-100">
             Preview {symbol} · {timeframe}
           </h2>
           <button
             type="button"
             onClick={onClose}
-            className="rounded-lg p-1 text-slate-400 hover:bg-slate-100"
+            className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800"
           >
             <X className="h-5 w-5" />
           </button>
         </div>
         <div className="overflow-auto">
           {loading && (
-            <div className="p-10 text-center text-slate-500">
+            <div className="p-10 text-center text-slate-500 dark:text-slate-400">
               Cargando velas...
             </div>
           )}
           {error && (
             <div className="p-6">
-              <p className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">
+              <p className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700 dark:border-rose-900 dark:bg-rose-950/40 dark:text-rose-400">
                 {error}
               </p>
             </div>
           )}
           {!loading && !error && (
             <table className="w-full text-left text-sm">
-              <thead className="border-b border-slate-200 bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
+              <thead className="border-b border-slate-200 bg-slate-50 text-xs uppercase tracking-wide text-slate-500 dark:border-slate-800 dark:bg-slate-800 dark:text-slate-400">
                 <tr>
                   <th className="px-4 py-2.5">Fecha</th>
                   <th className="px-4 py-2.5 text-right">Open</th>
@@ -84,25 +84,25 @@ export default function PreviewModal({
                   <th className="px-4 py-2.5 text-right">Volume</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                 {rows.map((r) => (
-                  <tr key={r.timestamp} className="hover:bg-slate-50">
-                    <td className="px-4 py-2 text-slate-600">
+                  <tr key={r.timestamp} className="hover:bg-slate-50 dark:hover:bg-slate-800/50">
+                    <td className="px-4 py-2 text-slate-600 dark:text-slate-300">
                       {formatDateTimeEs(r.timestamp)}
                     </td>
-                    <td className="px-4 py-2 text-right tabular-nums text-slate-600">
+                    <td className="px-4 py-2 text-right tabular-nums text-slate-600 dark:text-slate-300">
                       {r.open}
                     </td>
-                    <td className="px-4 py-2 text-right tabular-nums text-slate-600">
+                    <td className="px-4 py-2 text-right tabular-nums text-slate-600 dark:text-slate-300">
                       {r.high}
                     </td>
-                    <td className="px-4 py-2 text-right tabular-nums text-slate-600">
+                    <td className="px-4 py-2 text-right tabular-nums text-slate-600 dark:text-slate-300">
                       {r.low}
                     </td>
-                    <td className="px-4 py-2 text-right tabular-nums text-slate-600">
+                    <td className="px-4 py-2 text-right tabular-nums text-slate-600 dark:text-slate-300">
                       {r.close}
                     </td>
-                    <td className="px-4 py-2 text-right tabular-nums text-slate-600">
+                    <td className="px-4 py-2 text-right tabular-nums text-slate-600 dark:text-slate-300">
                       {r.volume}
                     </td>
                   </tr>
@@ -111,14 +111,14 @@ export default function PreviewModal({
             </table>
           )}
         </div>
-        <div className="flex items-center justify-between border-t border-slate-200 px-5 py-3">
-          <p className="text-sm text-slate-500">
+        <div className="flex items-center justify-between border-t border-slate-200 px-5 py-3 dark:border-slate-800">
+          <p className="text-sm text-slate-500 dark:text-slate-400">
             {loading ? "Cargando..." : `${rows.length} velas (últimas 50)`}
           </p>
           <button
             type="button"
             onClick={onClose}
-            className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
+            className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
           >
             Cerrar
           </button>

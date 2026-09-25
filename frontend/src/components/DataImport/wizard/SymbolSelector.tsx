@@ -40,7 +40,7 @@ export function SymbolSelector({ available, selected, onToggle }: SymbolSelector
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Buscar símbolo (BTCUSDT)…"
-          className="w-full rounded-lg border border-slate-300 py-2 pl-9 pr-3 text-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200"
+          className="w-full rounded-lg border border-slate-300 py-2 pl-9 pr-3 text-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:focus:ring-indigo-900"
         />
       </div>
       <div className="flex flex-wrap gap-2">
@@ -56,9 +56,9 @@ export function SymbolSelector({ available, selected, onToggle }: SymbolSelector
           </button>
         ))}
       </div>
-      <div className="max-h-56 overflow-y-auto rounded-xl border border-slate-200">
+      <div className="max-h-56 overflow-y-auto rounded-xl border border-slate-200 dark:border-slate-800">
         {filtered.length === 0 && (
-          <p className="px-4 py-6 text-center text-sm text-slate-500">
+          <p className="px-4 py-6 text-center text-sm text-slate-500 dark:text-slate-400">
             Sin resultados{debounced ? ` para "${debounced}"` : ""}.
           </p>
         )}
@@ -69,15 +69,15 @@ export function SymbolSelector({ available, selected, onToggle }: SymbolSelector
             onClick={() => onToggle(s.symbol)}
             className={`flex w-full items-center justify-between px-4 py-2 text-left text-sm transition-colors ${
               selected.includes(s.symbol)
-                ? "bg-indigo-50 font-medium text-indigo-700"
-                : "text-slate-700 hover:bg-slate-50"
+                ? "bg-indigo-50 font-medium text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-300"
+                : "text-slate-700 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-slate-800"
             }`}
           >
             <span>
               <span className="font-medium">{s.base_asset}</span>
-              <span className="text-slate-400"> / {s.quote_asset}</span>
+              <span className="text-slate-400 dark:text-slate-500"> / {s.quote_asset}</span>
             </span>
-            <span className="text-xs text-slate-400">{s.symbol}</span>
+            <span className="text-xs text-slate-400 dark:text-slate-500">{s.symbol}</span>
           </button>
         ))}
       </div>

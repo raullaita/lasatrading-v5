@@ -3,12 +3,13 @@ import { useCallback, useEffect, useState } from "react";
 import { Plus, RefreshCw, Trash2 } from "lucide-react";
 import { Link } from "react-router-dom";
 
-import { DeleteJobModal } from "../../components/DataImport/DeleteJobModal";
-import { StatusBadge } from "../../components/DataImport/StatusBadge";
+import { DeleteJobModal } from "../../components/Features/DeleteJobModal";
+import { ProgressBar } from "../../components/Features/ProgressBar";
+import { StatusBadge } from "../../components/Features/StatusBadge";
 import { SortableTh } from "../../components/ui/SortableTh";
-import { deleteJob, deleteJobsBatch, listJobs, type JobListQuery } from "../../services/api";
-import type { JobListItem } from "../../types/dataImport";
-import { formatDateEs, formatDateTimeEs } from "../../utils/format";
+import { deleteFeatureJob, deleteFeatureJobsBatch, getFeatureJobs } from "../../services/featuresApi";
+import type { FeatureJobListItem } from "../../types/features";
+import { formatDateTimeEs, formatDateEs } from "../../utils/format";
 
 const PAGE_SIZE = 20;
 
@@ -16,13 +17,13 @@ function isTerminal(status: string): boolean {
   return status === "completed" || status === "failed" || status === "cancelled";
 }
 
-export default function ImportList() {
-  const [jobs, setJobs] = useState<JobListItem[]>([]);
+export default function FeatureList() {
+  const [jobs, setJobs] = useState<FeatureJobListItem[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
-  const [status, setStatus] = useState<string>("");
+  const [status, setStatus] = useState("");
   const [symbol, setSymbol] = useState("");
-  const [timeframe, setTimeframe] = useState<string>("");
+  const [timeframe, setTimeframe] = useState("");
   const [sortBy, setSortBy] = useState("created_at");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
   const [loading, setLoading] = useState(true);
@@ -32,45 +33,40 @@ export default function ImportList() {
   const [modalIds, setModalIds] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
 
-  const load = useCallback(async (q: JobListQuery) => {
+  const load = useCallback(async () => {
     setLoading(true);
     try {
-      const data = await listJobs(q);
+      const data = await getFeatureJobs({
+        status: status || undefined,
+        symbol: symbol || undefined,
+        timeframe: timeframe || undefined,
+        sort_by: sortBy,
+        sort_order: sortOrder,
+        page,
+        page_size: PAGE_SIZE,
+      });
       setJobs(data.jobs);
       setTotal(data.total);
       setError(null);
     } catch {
-      setError("No se pudo cargar la lista de importaciones.");
+      setError("No se pudo cargar la lista de cálculos.");
     } finally {
       setLoading(false);
     }
-  }, []);
-
-  const buildQuery = useCallback(
-    (): JobListQuery => ({
-      status: status || undefined,
-      symbol: symbol || undefined,
-      timeframe: timeframe || undefined,
-      sort_by: sortBy,
-      sort_order: sortOrder,
-      page,
-      page_size: PAGE_SIZE,
-    }),
-    [status, symbol, timeframe, sortBy, sortOrder, page],
-  );
+  }, [status, symbol, timeframe, sortBy, sortOrder, page]);
 
   useEffect(() => {
-    void load(buildQuery());
-  }, [load, buildQuery]);
+    void load();
+  }, [load]);
 
   useEffect(() => {
     const hasLive = jobs.some((j) => !isTerminal(j.status));
     if (!hasLive) return;
     const timer = window.setInterval(() => {
-      void load(buildQuery());
+      void load();
     }, 5000);
     return () => window.clearInterval(timer);
-  }, [jobs, load, buildQuery]);
+  }, [jobs, load]);
 
   const handleSort = (key: string) => {
     if (sortBy === key) {
@@ -114,13 +110,13 @@ export default function ImportList() {
     setBusy(true);
     try {
       if (modalIds.length === 1) {
-        await deleteJob(modalIds[0]);
+        await deleteFeatureJob(modalIds[0]);
       } else {
-        await deleteJobsBatch(modalIds);
+        await deleteFeatureJobsBatch(modalIds);
       }
       setSelectedIds(new Set());
       closeDeleteModal();
-      await load(buildQuery());
+      await load();
     } catch {
       setError("No se pudieron borrar los jobs.");
     } finally {
@@ -132,14 +128,14 @@ export default function ImportList() {
 
   return (
     <main className="h-screen flex-1 overflow-y-auto bg-slate-50 p-8 dark:bg-slate-950">
-      <div className="mx-auto max-w-5xl">
+      <div className="mx-auto max-w-6xl">
         <div className="mb-6 flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">
-              Importación de Datos
+              Cálculo de Features
             </h1>
             <p className="text-sm text-slate-500 dark:text-slate-400">
-              {total} job{total === 1 ? "" : "s"} de importación desde Binance
+              {total} job{total === 1 ? "" : "s"} de cálculo de indicadores
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -155,11 +151,11 @@ export default function ImportList() {
               </button>
             )}
             <Link
-              to="/import/new"
+              to="/features/new"
               className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700"
             >
               <Plus className="h-4 w-4" />
-              Nueva importación
+              Nuevo cálculo
             </Link>
           </div>
         </div>
@@ -224,7 +220,7 @@ export default function ImportList() {
           </label>
           <button
             type="button"
-            onClick={() => void load(buildQuery())}
+            onClick={() => void load()}
             className="inline-flex items-center gap-2 rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
           >
             <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
@@ -257,8 +253,20 @@ export default function ImportList() {
                   sortOrder={sortOrder}
                   onSort={handleSort}
                 />
-                <th className="px-4 py-2.5">Símbolos</th>
-                <th className="px-4 py-2.5">Timeframes</th>
+                <SortableTh
+                  label="Símbolo"
+                  sortKey="symbol"
+                  sortBy={sortBy}
+                  sortOrder={sortOrder}
+                  onSort={handleSort}
+                />
+                <SortableTh
+                  label="Timeframe"
+                  sortKey="timeframe"
+                  sortBy={sortBy}
+                  sortOrder={sortOrder}
+                  onSort={handleSort}
+                />
                 <SortableTh
                   label="Período"
                   sortKey="date_from"
@@ -266,14 +274,13 @@ export default function ImportList() {
                   sortOrder={sortOrder}
                   onSort={handleSort}
                 />
-                <th className="px-4 py-2.5">Modo</th>
+                <th className="px-4 py-2.5">Indicadores</th>
                 <SortableTh
-                  label="I / U / S"
-                  sortKey="total_candles_inserted"
+                  label="Progreso"
+                  sortKey="processed_candles"
                   sortBy={sortBy}
                   sortOrder={sortOrder}
                   onSort={handleSort}
-                  className="text-right"
                 />
                 <SortableTh
                   label="Creado"
@@ -288,7 +295,7 @@ export default function ImportList() {
               {jobs.length === 0 && !loading && (
                 <tr>
                   <td colSpan={9} className="px-4 py-10 text-center text-slate-500 dark:text-slate-400">
-                    No hay importaciones registradas.
+                    No hay cálculos registrados.
                   </td>
                 </tr>
               )}
@@ -307,27 +314,25 @@ export default function ImportList() {
                   </td>
                   <td className="px-4 py-2.5">
                     <Link
-                      to={`/import/${j.id}`}
+                      to={`/features/${j.id}`}
                       className="font-medium text-indigo-600 hover:underline dark:text-indigo-400"
                     >
-                      {j.symbols.join(", ")}
+                      {j.symbol}
                     </Link>
                   </td>
-                  <td className="px-4 py-2.5 text-slate-600 dark:text-slate-300">
-                    {j.timeframes.join(", ")}
-                  </td>
+                  <td className="px-4 py-2.5 text-slate-600 dark:text-slate-300">{j.timeframe}</td>
                   <td className="px-4 py-2.5 text-slate-600 dark:text-slate-300">
                     {formatDateEs(j.date_from)} → {formatDateEs(j.date_to)}
                   </td>
-                  <td className="px-4 py-2.5">
-                    <span className="rounded bg-slate-100 px-2 py-0.5 text-xs font-medium capitalize text-slate-600 dark:bg-slate-800 dark:text-slate-300">
-                      {j.import_mode}
-                    </span>
+                  <td className="px-4 py-2.5 text-slate-600 dark:text-slate-300">
+                    {j.indicators_config.length}
                   </td>
-                  <td className="px-4 py-2.5 text-right tabular-nums text-slate-600 dark:text-slate-300">
-                    {j.total_candles_inserted.toLocaleString("es")} /{" "}
-                    {j.total_candles_updated.toLocaleString("es")} /{" "}
-                    {j.total_candles_skipped.toLocaleString("es")}
+                  <td className="px-4 py-2.5">
+                    {j.status === "processing" ? (
+                      <ProgressBar current={j.processed_candles} total={j.total_candles} />
+                    ) : (
+                      <span className="text-slate-400 dark:text-slate-500">—</span>
+                    )}
                   </td>
                   <td className="px-4 py-2.5 text-slate-500 dark:text-slate-400">
                     {formatDateTimeEs(j.created_at)}
@@ -372,6 +377,7 @@ export default function ImportList() {
             </button>
           </div>
         </div>
+
         <DeleteJobModal
           open={modalOpen}
           jobIds={modalIds}

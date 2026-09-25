@@ -36,14 +36,14 @@ export function ImportOptions({
             onClick={() => onChange(mode.value)}
             className={`w-full rounded-xl border p-4 text-left transition-colors ${
               active
-                ? "border-indigo-600 bg-indigo-50"
-                : "border-slate-200 bg-white hover:bg-slate-50"
+                ? "border-indigo-600 bg-indigo-50 dark:border-indigo-500 dark:bg-indigo-950/40"
+                : "border-slate-200 bg-white hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:hover:bg-slate-800"
             }`}
           >
-            <p className={`text-sm font-semibold ${active ? "text-indigo-700" : "text-slate-800"}`}>
+            <p className={`text-sm font-semibold ${active ? "text-indigo-700 dark:text-indigo-300" : "text-slate-800 dark:text-slate-200"}`}>
               {mode.title}
             </p>
-            <p className="mt-1 text-sm text-slate-500">{mode.description}</p>
+            <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">{mode.description}</p>
           </button>
         );
       })}

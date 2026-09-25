@@ -32,9 +32,9 @@ export function ImportSummary({
 
 function SummaryRow({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex items-center justify-between rounded-lg border border-slate-200 bg-white px-4 py-2.5">
-      <span className="text-sm text-slate-500">{label}</span>
-      <span className="max-w-[60%] truncate text-sm font-medium text-slate-800" title={value}>
+    <div className="flex items-center justify-between rounded-lg border border-slate-200 bg-white px-4 py-2.5 dark:border-slate-800 dark:bg-slate-900">
+      <span className="text-sm text-slate-500 dark:text-slate-400">{label}</span>
+      <span className="max-w-[60%] truncate text-sm font-medium text-slate-800 dark:text-slate-200" title={value}>
         {value}
       </span>
     </div>

@@ -4,8 +4,14 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import get_settings
 from app.modules.data.router import router as data_router
-from app.modules.data_import import models as _models  # noqa: F401  # metadata Alembic
+from app.modules.data_import import (
+    models as _data_import_models,  # noqa: F401  # metadata Alembic
+)
 from app.modules.data_import.router import router as data_import_router
+from app.modules.features import (
+    models as _features_models,  # noqa: F401  # metadata Alembic
+)
+from app.modules.features.router import router as features_router
 
 settings = get_settings()
 
@@ -31,6 +37,7 @@ app.add_middleware(
 
 app.include_router(data_import_router)
 app.include_router(data_router)
+app.include_router(features_router)
 
 
 @app.get("/health")

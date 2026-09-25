@@ -79,7 +79,7 @@ export function DateRangePicker({
             className={
               activePreset === p.key
                 ? "rounded-lg border border-indigo-600 bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white"
-                : "rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                : "rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
             }
           >
             {p.label}
@@ -88,23 +88,23 @@ export function DateRangePicker({
       </div>
       <div className="grid grid-cols-2 gap-4">
         <label className="block">
-          <span className="mb-1 block text-sm font-medium text-slate-700">Desde</span>
+          <span className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-300">Desde</span>
           <input
             type="date"
             value={value.from}
             max={today}
             onChange={onManualChange("from")}
-            className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200"
+            className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:focus:ring-indigo-900"
           />
         </label>
         <label className="block">
-          <span className="mb-1 block text-sm font-medium text-slate-700">Hasta</span>
+          <span className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-300">Hasta</span>
           <input
             type="date"
             value={value.to}
             max={today}
             onChange={onManualChange("to")}
-            className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200"
+            className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:focus:ring-indigo-900"
           />
         </label>
       </div>

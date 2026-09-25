@@ -18,8 +18,8 @@ export function TimeframeSelector({
       {TIMEFRAME_GROUPS.map((group) => (
         <div key={group.label}>
           <div className="mb-2 flex items-center justify-between">
-            <p className="text-sm font-semibold text-slate-700">{group.label}</p>
-            <span className="text-xs text-slate-400">
+            <p className="text-sm font-semibold text-slate-700 dark:text-slate-200">{group.label}</p>
+            <span className="text-xs text-slate-400 dark:text-slate-500">
               {group.data.filter((tf) => selected.includes(tf)).length} seleccionados
             </span>
           </div>
@@ -34,7 +34,7 @@ export function TimeframeSelector({
                   className={`rounded-lg border px-3 py-2 text-sm font-medium transition-colors ${
                     active
                       ? "border-indigo-600 bg-indigo-600 text-white"
-                      : "border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
+                      : "border-slate-300 bg-white text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
                   }`}
                 >
                   {tf}
@@ -47,7 +47,7 @@ export function TimeframeSelector({
       <button
         type="button"
         onClick={useDefaults}
-        className="text-xs font-medium text-indigo-600 hover:underline"
+        className="text-xs font-medium text-indigo-600 hover:underline dark:text-indigo-400"
       >
         Usar defaults (1h, 4h, 1d)
       </button>

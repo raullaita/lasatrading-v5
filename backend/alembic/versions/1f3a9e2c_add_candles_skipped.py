@@ -10,11 +10,15 @@ depends_on = None
 def upgrade() -> None:
     op.add_column(
         "import_job_combinations",
-        sa.Column("candles_skipped", sa.BigInteger(), nullable=False, server_default="0"),
+        sa.Column(
+            "candles_skipped", sa.BigInteger(), nullable=False, server_default="0"
+        ),
     )
     op.add_column(
         "import_jobs",
-        sa.Column("total_candles_skipped", sa.BigInteger(), nullable=False, server_default="0"),
+        sa.Column(
+            "total_candles_skipped", sa.BigInteger(), nullable=False, server_default="0"
+        ),
     )
 
 

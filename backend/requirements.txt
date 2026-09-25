@@ -9,6 +9,9 @@ httpx
 pydantic-settings
 structlog
 
+pandas
+numpy
+
 ruff
 pytest
 pytest-asyncio
