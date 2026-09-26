@@ -321,10 +321,11 @@ class FeatureService:
             ema_slow = close.ewm(span=slow, adjust=False).mean()
             macd_line = ema_fast - ema_slow
             signal_line = macd_line.ewm(span=signal, adjust=False).mean()
+            suffix = f"{fast}_{slow}_{signal}"
             return {
-                "MACD": macd_line,
-                "MACD_signal": signal_line,
-                "MACD_hist": macd_line - signal_line,
+                f"MACD_{suffix}": macd_line,
+                f"MACDs_{suffix}": signal_line,
+                f"MACDh_{suffix}": macd_line - signal_line,
             }
 
         if indicator_name == "BBANDS":
@@ -377,11 +378,6 @@ class FeatureService:
 
         rows = []
         for col_name, series in columns.items():
-            full_name = (
-                col_name
-                if col_name.startswith(indicator_name)
-                else f"{indicator_name}_{col_name}"
-            )
             nan_count = int(series.isna().sum())
             discarded_nans += nan_count
             series_clean = series.dropna()
@@ -392,7 +388,7 @@ class FeatureService:
                         "timestamp": timestamp,
                         "symbol": symbol,
                         "timeframe": timeframe,
-                        "indicator_name": full_name,
+                        "indicator_name": col_name,
                         "indicator_params": params,
                         "value": float(value),
                         "feature_job_id": job_id,

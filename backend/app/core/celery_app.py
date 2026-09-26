@@ -8,7 +8,11 @@ celery_app = Celery(
     "lasatrading",
     broker=settings.CELERY_BROKER_URL,
     backend=settings.CELERY_RESULT_BACKEND,
-    include=["app.modules.data_import.tasks", "app.modules.features.tasks"],
+    include=[
+        "app.modules.data_import.tasks",
+        "app.modules.features.tasks",
+        "app.modules.patterns.tasks",
+    ],
 )
 
 celery_app.conf.update(

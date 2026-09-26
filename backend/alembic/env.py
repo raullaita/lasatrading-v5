@@ -5,6 +5,7 @@ from app.config import get_settings
 from app.core.database import Base
 from app.modules.data_import import models as _models  # noqa: F401
 from app.modules.features import models as _features_models  # noqa: F401
+from app.modules.patterns import models as _patterns_models  # noqa: F401
 from sqlalchemy import engine_from_config, pool
 
 config = context.config
