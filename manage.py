@@ -297,6 +297,12 @@ def command_setup() -> None:
     provision_env()
     git_init()
     docker_up()
+    banner("Aplicando migraciones de base de datos")
+    _run_visible(
+        [str(venv_python()), "-m", "alembic", "upgrade", "head"],
+        cwd=BACKEND,
+    )
+    ok("Migraciones aplicadas")
     banner("Setup completado")
     print("Ejecuta 'python manage.py start' para levantar todos los servicios.")
     command_status()
