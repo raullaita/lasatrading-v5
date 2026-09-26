@@ -15,6 +15,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 BACKEND = ROOT / "backend"
+from dotenv import load_dotenv
+load_dotenv(BACKEND / ".env")
 FRONTEND = ROOT / "frontend"
 PID_DIR = ROOT / ".pids"
 LOG_DIR = ROOT / ".logs"
@@ -360,7 +362,7 @@ def service_cmd(name: str) -> list:
             "uvicorn",
             "app.main:app",
             "--host",
-            "127.0.0.1",
+            os.environ.get("API_HOST", "127.0.0.1"),
             "--port",
             "8000",
         ]
