@@ -27,9 +27,7 @@ export default function DeleteModal({
     if (!match || confirming) return;
     setConfirming(true);
     setError(null);
-    const results = await Promise.allSettled(
-      groups.map((g) => deleteData(g.symbol, g.timeframe)),
-    );
+    const results = await Promise.allSettled(groups.map((g) => deleteData(g.symbol, g.timeframe)));
     const failed = results.filter((r) => r.status === "rejected").length;
     if (failed === 0) {
       onDeleted();
@@ -66,15 +64,13 @@ export default function DeleteModal({
                   <span className="font-semibold">{first.symbol}</span> · {first.timeframe}
                 </>
               ) : (
-                <span className="font-semibold">
-                  {count} combinaciones seleccionadas
-                </span>
+                <span className="font-semibold">{count} combinaciones seleccionadas</span>
               )}
             </p>
             <p className="mt-1">
               Se eliminarán{" "}
-              <span className="font-semibold">{totalCandles.toLocaleString("es")}</span> velas.
-              Esta acción no se puede deshacer.
+              <span className="font-semibold">{totalCandles.toLocaleString("es")}</span> velas. Esta
+              acción no se puede deshacer.
             </p>
           </div>
           <label className="block">
@@ -113,9 +109,7 @@ export default function DeleteModal({
             className="inline-flex items-center gap-2 rounded-lg bg-rose-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-rose-700 disabled:opacity-40"
           >
             <Trash2 className="h-4 w-4" />
-            {confirming
-              ? "Eliminando..."
-              : `Eliminar ${totalCandles.toLocaleString("es")} velas`}
+            {confirming ? "Eliminando..." : `Eliminar ${totalCandles.toLocaleString("es")} velas`}
           </button>
         </div>
       </div>

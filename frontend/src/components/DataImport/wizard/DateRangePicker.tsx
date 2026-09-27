@@ -58,13 +58,11 @@ export function DateRangePicker({
     onChange({ from: toLocalInput(from), to: toLocalInput(to) });
   };
 
-  const onManualChange =
-    (field: "from" | "to") =>
-    (e: ChangeEvent<HTMLInputElement>) => {
-      if (!e.target.value) return;
-      setActivePreset(null);
-      onChange({ ...value, [field]: e.target.value });
-    };
+  const onManualChange = (field: "from" | "to") => (e: ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.value) return;
+    setActivePreset(null);
+    onChange({ ...value, [field]: e.target.value });
+  };
 
   const today = toLocalInput(new Date());
 
@@ -88,7 +86,9 @@ export function DateRangePicker({
       </div>
       <div className="grid grid-cols-2 gap-4">
         <label className="block">
-          <span className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-300">Desde</span>
+          <span className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-300">
+            Desde
+          </span>
           <input
             type="date"
             value={value.from}
@@ -98,7 +98,9 @@ export function DateRangePicker({
           />
         </label>
         <label className="block">
-          <span className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-300">Hasta</span>
+          <span className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-300">
+            Hasta
+          </span>
           <input
             type="date"
             value={value.to}

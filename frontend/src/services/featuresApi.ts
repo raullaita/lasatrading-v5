@@ -12,9 +12,7 @@ const apiClient = axios.create({
   timeout: 30000,
 });
 
-export async function createFeatureJob(
-  config: FeatureJobConfig
-): Promise<FeatureJobResponse> {
+export async function createFeatureJob(config: FeatureJobConfig): Promise<FeatureJobResponse> {
   const { data } = await apiClient.post<FeatureJobResponse>("/jobs", config);
   return data;
 }
@@ -28,7 +26,7 @@ export async function getFeatureJobs(
     sort_order?: string;
     page?: number;
     page_size?: number;
-  } = {}
+  } = {},
 ): Promise<FeatureJobListOut> {
   const { data } = await apiClient.get<FeatureJobListOut>("/jobs", {
     params: filters,
@@ -43,66 +41,44 @@ export async function getFeatureJob(jobId: string): Promise<FeatureJobResponse> 
 
 export async function getFeatureJobPreview(
   jobId: string,
-  limit: number = 100
+  limit: number = 100,
 ): Promise<FeaturePreviewOut> {
-  const { data } = await apiClient.get<FeaturePreviewOut>(
-    `/jobs/${jobId}/preview`,
-    { params: { limit } }
-  );
+  const { data } = await apiClient.get<FeaturePreviewOut>(`/jobs/${jobId}/preview`, {
+    params: { limit },
+  });
   return data;
 }
 
-export async function cancelFeatureJob(
-  jobId: string
-): Promise<FeatureJobResponse> {
-  const { data } = await apiClient.post<FeatureJobResponse>(
-    `/jobs/${jobId}/cancel`
-  );
+export async function cancelFeatureJob(jobId: string): Promise<FeatureJobResponse> {
+  const { data } = await apiClient.post<FeatureJobResponse>(`/jobs/${jobId}/cancel`);
   return data;
 }
 
 export async function deleteFeatureJob(
-  jobId: string
+  jobId: string,
 ): Promise<{ deleted: boolean; job_id: string }> {
-  const { data } = await apiClient.delete<{ deleted: boolean; job_id: string }>(
-    `/jobs/${jobId}`
-  );
+  const { data } = await apiClient.delete<{ deleted: boolean; job_id: string }>(`/jobs/${jobId}`);
   return data;
 }
 
-export async function deleteFeatureJobsBatch(
-  jobIds: string[]
-): Promise<{ deleted_count: number }> {
-  const { data } = await apiClient.delete<{ deleted_count: number }>(
-    `/jobs/batch`,
-    { data: { job_ids: jobIds } }
-  );
+export async function deleteFeatureJobsBatch(jobIds: string[]): Promise<{ deleted_count: number }> {
+  const { data } = await apiClient.delete<{ deleted_count: number }>(`/jobs/batch`, {
+    data: { job_ids: jobIds },
+  });
   return data;
 }
 
-export async function clearFeatureJobLogs(
-  jobId: string
-): Promise<{ deleted: number }> {
-  const { data } = await apiClient.delete<{ deleted: number }>(
-    `/jobs/${jobId}/logs`
-  );
+export async function clearFeatureJobLogs(jobId: string): Promise<{ deleted: number }> {
+  const { data } = await apiClient.delete<{ deleted: number }>(`/jobs/${jobId}/logs`);
   return data;
 }
 
-export async function requeueFeatureJob(
-  jobId: string
-): Promise<FeatureJobResponse> {
-  const { data } = await apiClient.post<FeatureJobResponse>(
-    `/jobs/${jobId}/requeue`
-  );
+export async function requeueFeatureJob(jobId: string): Promise<FeatureJobResponse> {
+  const { data } = await apiClient.post<FeatureJobResponse>(`/jobs/${jobId}/requeue`);
   return data;
 }
 
-export async function getAvailableData(): Promise<
-  { symbol: string; timeframe: string }[]
-> {
-  const { data } = await apiClient.get<{ symbol: string; timeframe: string }[]>(
-    `/data/available`
-  );
+export async function getAvailableData(): Promise<{ symbol: string; timeframe: string }[]> {
+  const { data } = await apiClient.get<{ symbol: string; timeframe: string }[]>(`/data/available`);
   return data;
 }

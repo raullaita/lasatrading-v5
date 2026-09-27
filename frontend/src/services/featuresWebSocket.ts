@@ -27,10 +27,7 @@ function wsUrl(jobId: string): string {
  * Conecta al WebSocket de logs de un job de features con reconexión
  * automática (backoff exponencial). Retorna una función para desconectar.
  */
-export function connectFeatureJobLogs(
-  jobId: string,
-  handlers: WebSocketHandlers
-): () => void {
+export function connectFeatureJobLogs(jobId: string, handlers: WebSocketHandlers): () => void {
   const existing = active.get(jobId);
   if (existing) {
     existing.handlers = { ...existing.handlers, ...handlers };
@@ -76,10 +73,7 @@ export function connectFeatureJobLogs(
       }
       if (state.retries < MAX_RECONNECTS) {
         state.retries += 1;
-        const delay = Math.min(
-          BACKOFF_BASE_MS * 2 ** (state.retries - 1),
-          10_000
-        );
+        const delay = Math.min(BACKOFF_BASE_MS * 2 ** (state.retries - 1), 10_000);
         state.timer = window.setTimeout(open, delay);
       } else {
         active.delete(jobId);
@@ -90,7 +84,7 @@ export function connectFeatureJobLogs(
     socket.onerror = () => {
       socket.close();
     };
-  }
+  };
 
   open();
   return () => disconnectFeatureJobLogs(jobId);

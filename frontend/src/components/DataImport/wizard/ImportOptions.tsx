@@ -4,7 +4,8 @@ const MODES: { value: ImportMode; title: string; description: string }[] = [
   {
     value: "merge",
     title: "Merge (recomendado)",
-    description: "Inserta velas nuevas y actualiza solo las que cambiaron. Ideal para reimportaciones.",
+    description:
+      "Inserta velas nuevas y actualiza solo las que cambiaron. Ideal para reimportaciones.",
   },
   {
     value: "append",
@@ -40,7 +41,9 @@ export function ImportOptions({
                 : "border-slate-200 bg-white hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:hover:bg-slate-800"
             }`}
           >
-            <p className={`text-sm font-semibold ${active ? "text-indigo-700 dark:text-indigo-300" : "text-slate-800 dark:text-slate-200"}`}>
+            <p
+              className={`text-sm font-semibold ${active ? "text-indigo-700 dark:text-indigo-300" : "text-slate-800 dark:text-slate-200"}`}
+            >
               {mode.title}
             </p>
             <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">{mode.description}</p>

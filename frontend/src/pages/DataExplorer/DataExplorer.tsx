@@ -144,8 +144,8 @@ export default function DataExplorer() {
               Explorador de Datos
             </h1>
             <p className="text-sm text-slate-500 dark:text-slate-400">
-              {total} combinacione{total === 1 ? "" : "s"} y{" "}
-              {totalCandles.toLocaleString("es")} velas en la base de datos
+              {total} combinacione{total === 1 ? "" : "s"} y {totalCandles.toLocaleString("es")}{" "}
+              velas en la base de datos
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -230,7 +230,9 @@ export default function DataExplorer() {
                 <th className="px-4 py-2.5">
                   <input
                     type="checkbox"
-                    checked={paginated.length > 0 && paginated.every((g) => selectedKeys.has(groupKey(g)))}
+                    checked={
+                      paginated.length > 0 && paginated.every((g) => selectedKeys.has(groupKey(g)))
+                    }
                     onChange={toggleSelectAll}
                     className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
                   />
@@ -276,7 +278,10 @@ export default function DataExplorer() {
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
               {paginated.length === 0 && !loading && (
                 <tr>
-                  <td colSpan={7} className="px-4 py-10 text-center text-slate-500 dark:text-slate-400">
+                  <td
+                    colSpan={7}
+                    className="px-4 py-10 text-center text-slate-500 dark:text-slate-400"
+                  >
                     No hay datos OHLCV en la base de datos.
                   </td>
                 </tr>

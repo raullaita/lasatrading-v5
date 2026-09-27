@@ -18,7 +18,9 @@ export function TimeframeSelector({
       {TIMEFRAME_GROUPS.map((group) => (
         <div key={group.label}>
           <div className="mb-2 flex items-center justify-between">
-            <p className="text-sm font-semibold text-slate-700 dark:text-slate-200">{group.label}</p>
+            <p className="text-sm font-semibold text-slate-700 dark:text-slate-200">
+              {group.label}
+            </p>
             <span className="text-xs text-slate-400 dark:text-slate-500">
               {group.data.filter((tf) => selected.includes(tf)).length} seleccionados
             </span>

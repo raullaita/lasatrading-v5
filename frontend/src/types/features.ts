@@ -1,9 +1,4 @@
-export type FeatureJobStatus =
-  | "pending"
-  | "processing"
-  | "completed"
-  | "failed"
-  | "cancelled";
+export type FeatureJobStatus = "pending" | "processing" | "completed" | "failed" | "cancelled";
 
 export interface IndicatorConfig {
   name: string;

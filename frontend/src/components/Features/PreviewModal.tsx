@@ -6,9 +6,7 @@ import { getFeatureJobPreview } from "../../services/featuresApi";
 import type { FeaturePreviewRow } from "../../types/features";
 
 const fmt = (v: number | null) =>
-  v === null
-    ? "—"
-    : v.toLocaleString("es-ES", { maximumFractionDigits: 8 });
+  v === null ? "—" : v.toLocaleString("es-ES", { maximumFractionDigits: 8 });
 
 export function PreviewModal({ jobId, onClose }: { jobId: string; onClose: () => void }) {
   const [rows, setRows] = useState<FeaturePreviewRow[]>([]);
@@ -67,7 +65,9 @@ export function PreviewModal({ jobId, onClose }: { jobId: string; onClose: () =>
               <Loader2 className="h-6 w-6 animate-spin text-indigo-600" />
             </div>
           ) : error ? (
-            <p className="px-5 py-10 text-center text-sm text-rose-600 dark:text-rose-400">{error}</p>
+            <p className="px-5 py-10 text-center text-sm text-rose-600 dark:text-rose-400">
+              {error}
+            </p>
           ) : rows.length === 0 ? (
             <p className="px-5 py-10 text-center text-sm text-slate-500 dark:text-slate-400">
               Sin datos calculados para este job.

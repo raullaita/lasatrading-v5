@@ -112,11 +112,8 @@ export function FeatureChart({
   const rows = useMemo(() => prepareRows(data), [data]);
 
   const plottable = useMemo(
-    () =>
-      rows.some(
-        (row) => row.ohlc !== null || Object.keys(row.indicators).length > 0
-      ),
-    [rows]
+    () => rows.some((row) => row.ohlc !== null || Object.keys(row.indicators).length > 0),
+    [rows],
   );
 
   useEffect(() => {
@@ -190,9 +187,7 @@ export function FeatureChart({
     } catch (err) {
       if (chart) chart.remove();
       chartRef.current = null;
-      setChartError(
-        err instanceof Error ? err.message : "No se pudo renderizar el gráfico."
-      );
+      setChartError(err instanceof Error ? err.message : "No se pudo renderizar el gráfico.");
       return;
     }
 
@@ -216,8 +211,8 @@ export function FeatureChart({
       )}
       {rows.length > 0 && !plottable && (
         <p className="py-8 text-center text-sm text-amber-600 dark:text-amber-400">
-          Se recibieron {rows.length} filas, pero ninguna contiene valores numéricos
-          válidos para graficar.
+          Se recibieron {rows.length} filas, pero ninguna contiene valores numéricos válidos para
+          graficar.
         </p>
       )}
       {rows.length > 0 && plottable && chartError && (

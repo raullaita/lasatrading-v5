@@ -1,10 +1,6 @@
 import axios from "axios";
 
-import type {
-  DataDeleteResponse,
-  DataPreviewResponse,
-  DataSummaryResponse,
-} from "../types/data";
+import type { DataDeleteResponse, DataPreviewResponse, DataSummaryResponse } from "../types/data";
 
 const apiClient = axios.create({
   baseURL: "/api/v1/data",
@@ -27,12 +23,7 @@ export async function previewData(
   return data;
 }
 
-export async function deleteData(
-  symbol: string,
-  timeframe: string,
-): Promise<DataDeleteResponse> {
-  const { data } = await apiClient.delete<DataDeleteResponse>(
-    `/${symbol}/${timeframe}`,
-  );
+export async function deleteData(symbol: string, timeframe: string): Promise<DataDeleteResponse> {
+  const { data } = await apiClient.delete<DataDeleteResponse>(`/${symbol}/${timeframe}`);
   return data;
 }

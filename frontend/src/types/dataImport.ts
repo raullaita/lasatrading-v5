@@ -1,9 +1,4 @@
-export type ImportStatus =
-  | "pending"
-  | "processing"
-  | "completed"
-  | "failed"
-  | "cancelled";
+export type ImportStatus = "pending" | "processing" | "completed" | "failed" | "cancelled";
 
 export type ImportMode = "merge" | "append" | "overwrite";
 

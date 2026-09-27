@@ -26,10 +26,7 @@ export function LogViewer({ logs, maxLines = 500 }: { logs: ImportLog[]; maxLine
           {visible.length}/{logs.length}
         </span>
       </div>
-      <div
-        ref={containerRef}
-        className="h-64 overflow-y-auto p-3 font-mono text-xs leading-5"
-      >
+      <div ref={containerRef} className="h-64 overflow-y-auto p-3 font-mono text-xs leading-5">
         {visible.length === 0 && (
           <p className="text-slate-600">Esperando eventos de importación…</p>
         )}

@@ -45,7 +45,7 @@ export function IndicatorSelector({
     const num = parseFloat(value);
     if (isNaN(num)) return;
     const updated = indicators.map((ind, i) =>
-      i === index ? { ...ind, params: { ...ind.params, [key]: num } } : ind
+      i === index ? { ...ind, params: { ...ind.params, [key]: num } } : ind,
     );
     onChange(updated);
   };
@@ -79,11 +79,14 @@ export function IndicatorSelector({
       {indicators.length > 0 && (
         <div className="space-y-2 border-t border-slate-200 pt-3 dark:border-slate-800">
           {indicators.map((ind, idx) => (
-            <div key={idx} className="flex items-center gap-2 rounded-lg bg-slate-50 p-2 dark:bg-slate-800">
-              <span className="flex-1 text-sm font-medium text-slate-700 dark:text-slate-200">{ind.name}</span>
-              {Object.entries(
-                PARAM_LABELS[ind.name] ?? {}
-              ).map(([key, label]) => (
+            <div
+              key={idx}
+              className="flex items-center gap-2 rounded-lg bg-slate-50 p-2 dark:bg-slate-800"
+            >
+              <span className="flex-1 text-sm font-medium text-slate-700 dark:text-slate-200">
+                {ind.name}
+              </span>
+              {Object.entries(PARAM_LABELS[ind.name] ?? {}).map(([key, label]) => (
                 <label key={key} className="text-xs text-slate-500 dark:text-slate-400">
                   {label}
                   <input

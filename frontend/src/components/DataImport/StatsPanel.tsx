@@ -81,7 +81,11 @@ function StatCard({
       <p className="text-xs text-slate-500 dark:text-slate-400">{label}</p>
       <p
         className={`mt-1 text-xl font-semibold ${
-          danger ? "text-rose-600 dark:text-rose-400" : accent ? "text-emerald-600 dark:text-emerald-400" : "text-slate-900 dark:text-slate-100"
+          danger
+            ? "text-rose-600 dark:text-rose-400"
+            : accent
+              ? "text-emerald-600 dark:text-emerald-400"
+              : "text-slate-900 dark:text-slate-100"
         }`}
       >
         {value}

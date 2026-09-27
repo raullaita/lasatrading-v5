@@ -26,7 +26,11 @@ export function PreviewModal({
     let active = true;
     setLoading(true);
     setError(null);
-    void previewJob(jobId, { symbol: symbol || undefined, timeframe: timeframe || undefined, limit: 100 })
+    void previewJob(jobId, {
+      symbol: symbol || undefined,
+      timeframe: timeframe || undefined,
+      limit: 100,
+    })
       .then((data) => {
         if (active) setRows(data.rows);
       })
@@ -54,7 +58,9 @@ export function PreviewModal({
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between border-b border-slate-200 px-5 py-3 dark:border-slate-800">
-          <h2 className="text-lg font-bold text-slate-900 dark:text-slate-100">Velas importadas ({rows.length})</h2>
+          <h2 className="text-lg font-bold text-slate-900 dark:text-slate-100">
+            Velas importadas ({rows.length})
+          </h2>
           <button
             type="button"
             onClick={onClose}
@@ -66,7 +72,9 @@ export function PreviewModal({
 
         <div className="flex flex-wrap gap-3 border-b border-slate-100 px-5 py-3 dark:border-slate-800">
           <label className="block">
-            <span className="mb-1 block text-xs font-medium text-slate-500 dark:text-slate-400">Símbolo</span>
+            <span className="mb-1 block text-xs font-medium text-slate-500 dark:text-slate-400">
+              Símbolo
+            </span>
             <select
               value={symbol}
               onChange={(e) => setSymbol(e.target.value)}
@@ -81,7 +89,9 @@ export function PreviewModal({
             </select>
           </label>
           <label className="block">
-            <span className="mb-1 block text-xs font-medium text-slate-500 dark:text-slate-400">Timeframe</span>
+            <span className="mb-1 block text-xs font-medium text-slate-500 dark:text-slate-400">
+              Timeframe
+            </span>
             <select
               value={timeframe}
               onChange={(e) => setTimeframe(e.target.value)}
@@ -103,7 +113,9 @@ export function PreviewModal({
               <Loader2 className="h-6 w-6 animate-spin text-indigo-600" />
             </div>
           ) : error ? (
-            <p className="px-5 py-10 text-center text-sm text-rose-600 dark:text-rose-400">{error}</p>
+            <p className="px-5 py-10 text-center text-sm text-rose-600 dark:text-rose-400">
+              {error}
+            </p>
           ) : rows.length === 0 ? (
             <p className="px-5 py-10 text-center text-sm text-slate-500 dark:text-slate-400">
               Sin velas para los filtros seleccionados.
@@ -128,13 +140,19 @@ export function PreviewModal({
                     <td className="px-4 py-1.5 tabular-nums text-slate-600 dark:text-slate-300">
                       {new Date(r.timestamp).toLocaleString("es")}
                     </td>
-                    <td className="px-4 py-1.5 font-medium text-slate-800 dark:text-slate-200">{r.symbol}</td>
-                    <td className="px-4 py-1.5 text-slate-500 dark:text-slate-400">{r.timeframe}</td>
+                    <td className="px-4 py-1.5 font-medium text-slate-800 dark:text-slate-200">
+                      {r.symbol}
+                    </td>
+                    <td className="px-4 py-1.5 text-slate-500 dark:text-slate-400">
+                      {r.timeframe}
+                    </td>
                     <td className="px-4 py-1.5 text-right tabular-nums">{fmt(r.open)}</td>
                     <td className="px-4 py-1.5 text-right tabular-nums">{fmt(r.high)}</td>
                     <td className="px-4 py-1.5 text-right tabular-nums">{fmt(r.low)}</td>
                     <td className="px-4 py-1.5 text-right tabular-nums">{fmt(r.close)}</td>
-                    <td className="px-4 py-1.5 text-right tabular-nums text-slate-500 dark:text-slate-400">{fmt(r.volume)}</td>
+                    <td className="px-4 py-1.5 text-right tabular-nums text-slate-500 dark:text-slate-400">
+                      {fmt(r.volume)}
+                    </td>
                   </tr>
                 ))}
               </tbody>

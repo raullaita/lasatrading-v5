@@ -20,17 +20,13 @@ export function LogViewer({ logs, maxLines = 500 }: { logs: FeatureLog[]; maxLin
   return (
     <div className="rounded-xl border border-slate-200 bg-slate-950 dark:border-slate-800">
       <div className="flex items-center justify-between border-b border-slate-800 px-4 py-2">
-        <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
-          Logs en vivo
-        </p>
+        <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Logs en vivo</p>
         <span className="text-xs text-slate-500">
           {visible.length}/{logs.length}
         </span>
       </div>
       <div ref={containerRef} className="h-64 overflow-y-auto p-3 font-mono text-xs leading-5">
-        {visible.length === 0 && (
-          <p className="text-slate-600">Esperando eventos de cálculo…</p>
-        )}
+        {visible.length === 0 && <p className="text-slate-600">Esperando eventos de cálculo…</p>}
         {visible.map((log) => (
           <div key={log.id} className="flex gap-2">
             <span className="shrink-0 text-slate-500">
