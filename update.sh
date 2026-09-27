@@ -22,8 +22,8 @@ npm install --silent
 # 5. Reiniciar todos los servicios para aplicar los cambios
 echo "🔄 Reiniciando servicios..."
 cd ..
-python manage.py restart
+python3 manage.py restart
 
 echo "✅ ¡Actualización completada con éxito!"
 echo ""
-python manage.py status
+python3 manage.py status
