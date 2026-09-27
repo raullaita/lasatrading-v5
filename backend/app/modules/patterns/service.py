@@ -24,6 +24,7 @@ from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.core.database import SessionLocal
+from app.modules.data.candles import load_candles
 from app.modules.patterns import pattern_catalog as catalog
 from app.modules.patterns.models import (
     LogLevel,
@@ -311,7 +312,7 @@ class PatternScanService:
             {code: dict(step.params) for step in steps for code in step.codes},
         )
 
-        df = self._load_candles(
+        df = load_candles(
             config.symbol, config.timeframe, config.date_from, config.date_to
         )
         if df.empty:
@@ -487,39 +488,6 @@ class PatternScanService:
             return PatternScanService._is_cancelled(db, job_id)
 
     # ------------------------------------------------------------- carga
-
-    def _load_candles(
-        self, symbol: str, timeframe: str, date_from: datetime, date_to: datetime
-    ) -> pd.DataFrame:
-        from app.modules.data_import.models import Candle
-
-        with SessionLocal() as db:
-            rows = db.execute(
-                select(
-                    Candle.timestamp,
-                    Candle.open,
-                    Candle.high,
-                    Candle.low,
-                    Candle.close,
-                    Candle.volume,
-                )
-                .where(Candle.symbol == symbol)
-                .where(Candle.timeframe == timeframe)
-                .where(Candle.timestamp >= date_from)
-                .where(Candle.timestamp <= date_to)
-                .order_by(Candle.timestamp)
-            ).all()
-
-        if not rows:
-            return pd.DataFrame()
-
-        df = pd.DataFrame(
-            rows, columns=["timestamp", "open", "high", "low", "close", "volume"]
-        )
-        for column in ("open", "high", "low", "close", "volume"):
-            df[column] = df[column].astype(float)
-        df["timestamp"] = pd.to_datetime(df["timestamp"], utc=True)
-        return df.set_index("timestamp").sort_index()
 
     def _load_features_pivot(
         self,
@@ -704,7 +672,7 @@ class PatternScanService:
         formato de lightweight-charts sea una traduccion trivial y el cliente no
         tenga que saber nada de nombres de feature.
         """
-        candles = self._load_candles(symbol, timeframe, date_from, date_to)
+        candles = load_candles(symbol, timeframe, date_from, date_to)
         if candles.empty:
             candle_rows: list[dict] = []
         else:

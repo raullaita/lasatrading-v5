@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.core.database import SessionLocal
+from app.modules.data.candles import load_candles
 from app.modules.features.models import (
     Feature,
     FeatureJob,
@@ -165,7 +166,7 @@ class FeatureService:
     async def _run_calculation(
         self, job_id: uuid.UUID, config: FeatureJobConfig
     ) -> None:
-        df = self._load_candles(
+        df = load_candles(
             config.symbol, config.timeframe, config.date_from, config.date_to
         )
         if df.empty:
@@ -239,48 +240,6 @@ class FeatureService:
                     f"Job completado: {total_candles} velas procesadas",
                 )
                 db.commit()
-
-    def _load_candles(
-        self, symbol: str, timeframe: str, date_from: datetime, date_to: datetime
-    ) -> pd.DataFrame:
-        with SessionLocal() as db:
-            from app.modules.data_import.models import Candle
-
-            rows = db.execute(
-                select(
-                    Candle.timestamp,
-                    Candle.open,
-                    Candle.high,
-                    Candle.low,
-                    Candle.close,
-                    Candle.volume,
-                )
-                .where(Candle.symbol == symbol)
-                .where(Candle.timeframe == timeframe)
-                .where(Candle.timestamp >= date_from)
-                .where(Candle.timestamp <= date_to)
-                .order_by(Candle.timestamp)
-            ).all()
-
-        if not rows:
-            return pd.DataFrame()
-
-        df = pd.DataFrame(
-            [
-                {
-                    "timestamp": r[0],
-                    "open": float(r[1]),
-                    "high": float(r[2]),
-                    "low": float(r[3]),
-                    "close": float(r[4]),
-                    "volume": float(r[5]),
-                }
-                for r in rows
-            ]
-        )
-        df["timestamp"] = pd.to_datetime(df["timestamp"])
-        df = df.set_index("timestamp")
-        return df
 
     def _calculate_indicator(
         self, df: pd.DataFrame, indicator_name: str, params: dict
