@@ -1,9 +1,11 @@
 import type { ImportJobCombination } from "../../types/dataImport";
-import { StatusBadge } from "./StatusBadge";
+import { StatusBadge } from "../ui/StatusBadge";
 
 export function CombinationList({ combinations }: { combinations: ImportJobCombination[] }) {
   if (combinations.length === 0) {
-    return <p className="text-sm text-slate-500 dark:text-slate-400">Sin combinaciones registradas.</p>;
+    return (
+      <p className="text-sm text-slate-500 dark:text-slate-400">Sin combinaciones registradas.</p>
+    );
   }
   return (
     <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-800">
@@ -22,7 +24,9 @@ export function CombinationList({ combinations }: { combinations: ImportJobCombi
         <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
           {combinations.map((c) => (
             <tr key={c.id}>
-              <td className="px-4 py-2 font-medium text-slate-800 dark:text-slate-200">{c.symbol}</td>
+              <td className="px-4 py-2 font-medium text-slate-800 dark:text-slate-200">
+                {c.symbol}
+              </td>
               <td className="px-4 py-2 text-slate-600 dark:text-slate-300">{c.timeframe}</td>
               <td className="px-4 py-2">
                 <StatusBadge status={c.status} />
@@ -37,9 +41,7 @@ export function CombinationList({ combinations }: { combinations: ImportJobCombi
                 {c.candles_skipped.toLocaleString("es")}
               </td>
               <td className="px-4 py-2 text-slate-500 dark:text-slate-400">
-                {c.last_candle_at
-                  ? new Date(c.last_candle_at).toLocaleString("es")
-                  : "—"}
+                {c.last_candle_at ? new Date(c.last_candle_at).toLocaleString("es") : "—"}
               </td>
             </tr>
           ))}

@@ -3,26 +3,34 @@ import { useCallback, useEffect, useState } from "react";
 import { Plus, RefreshCw, Trash2 } from "lucide-react";
 import { Link } from "react-router-dom";
 
-import { ProgressBar } from "../../components/Features/ProgressBar";
 import { DeleteJobModal } from "../../components/ui/DeleteJobModal";
 import { SortableTh } from "../../components/ui/SortableTh";
 import { StatusBadge } from "../../components/ui/StatusBadge";
 import {
-  deleteFeatureJob,
-  deleteFeatureJobsBatch,
-  getFeatureJobs,
-} from "../../services/featuresApi";
-import type { FeatureJobListItem } from "../../types/features";
-import { formatDateTimeEs, formatDateEs } from "../../utils/format";
+  deletePatternScan,
+  deletePatternScansBatch,
+  getPatternScans,
+} from "../../services/patternsApi";
+import { PATTERN_TERMINAL_STATUSES, type PatternScanJobListItem } from "../../types/patterns";
+import { formatDateEs, formatDateTimeEs } from "../../utils/format";
 
+/** Tope del backend en `GET /scans` (`page_size` le=100). */
 const PAGE_SIZE = 20;
 
-function isTerminal(status: string): boolean {
-  return status === "completed" || status === "failed" || status === "cancelled";
-}
+/** Columnas admitidas por la lista blanca de `sort_by` del router. */
+const SORTABLE = new Set([
+  "created_at",
+  "status",
+  "symbol",
+  "timeframe",
+  "processed_candles",
+  "date_from",
+  "date_to",
+  "finished_at",
+]);
 
-export default function FeatureList() {
-  const [jobs, setJobs] = useState<FeatureJobListItem[]>([]);
+export default function PatternList() {
+  const [jobs, setJobs] = useState<PatternScanJobListItem[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [status, setStatus] = useState("");
@@ -40,7 +48,7 @@ export default function FeatureList() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const data = await getFeatureJobs({
+      const data = await getPatternScans({
         status: status || undefined,
         symbol: symbol || undefined,
         timeframe: timeframe || undefined,
@@ -53,7 +61,7 @@ export default function FeatureList() {
       setTotal(data.total);
       setError(null);
     } catch {
-      setError("No se pudo cargar la lista de cálculos.");
+      setError("No se pudo cargar la lista de escaneos.");
     } finally {
       setLoading(false);
     }
@@ -63,8 +71,15 @@ export default function FeatureList() {
     void load();
   }, [load]);
 
+  /**
+   * Solo sondea si hay algo vivo en la página actual.
+   *
+   * `PATTERN_TERMINAL_STATUSES` viene del módulo de tipos y no se re-declara
+   * aquí: si el backend añade un estado final nuevo, la lista deja de preguntar
+   * sola en vez de quedarse consultando un job muerto cada 5 s para siempre.
+   */
   useEffect(() => {
-    const hasLive = jobs.some((j) => !isTerminal(j.status));
+    const hasLive = jobs.some((j) => !PATTERN_TERMINAL_STATUSES.includes(j.status));
     if (!hasLive) return;
     const timer = window.setInterval(() => {
       void load();
@@ -73,6 +88,7 @@ export default function FeatureList() {
   }, [jobs, load]);
 
   const handleSort = (key: string) => {
+    if (!SORTABLE.has(key)) return;
     if (sortBy === key) {
       setSortOrder((prev) => (prev === "asc" ? "desc" : "asc"));
     } else {
@@ -93,7 +109,7 @@ export default function FeatureList() {
 
   const toggleSelectAll = () => {
     setSelectedIds((prev) => {
-      const allSelected = jobs.every((j) => prev.has(j.id));
+      const allSelected = jobs.length > 0 && jobs.every((j) => prev.has(j.id));
       if (allSelected) return new Set();
       return new Set(jobs.map((j) => j.id));
     });
@@ -114,21 +130,21 @@ export default function FeatureList() {
     setBusy(true);
     try {
       if (modalIds.length === 1) {
-        await deleteFeatureJob(modalIds[0]);
+        await deletePatternScan(modalIds[0]);
       } else {
-        await deleteFeatureJobsBatch(modalIds);
+        await deletePatternScansBatch(modalIds);
       }
-      setSelectedIds(new Set());
       closeDeleteModal();
       await load();
     } catch {
-      setError("No se pudieron borrar los jobs.");
+      setError("No se pudieron borrar los escaneos.");
     } finally {
       setBusy(false);
     }
   };
 
   const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const allSelected = jobs.length > 0 && jobs.every((j) => selectedIds.has(j.id));
 
   return (
     <main className="h-screen flex-1 overflow-y-auto bg-slate-50 p-8 dark:bg-slate-950">
@@ -136,10 +152,10 @@ export default function FeatureList() {
         <div className="mb-6 flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">
-              Cálculo de Features
+              Detección de Patrones
             </h1>
             <p className="text-sm text-slate-500 dark:text-slate-400">
-              {total} job{total === 1 ? "" : "s"} de cálculo de indicadores
+              {total} escaneo{total === 1 ? "" : "s"}
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -155,11 +171,17 @@ export default function FeatureList() {
               </button>
             )}
             <Link
-              to="/features/new"
+              to="/patterns/occurrences"
+              className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
+            >
+              Ver ocurrencias
+            </Link>
+            <Link
+              to="/patterns/new"
               className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700"
             >
               <Plus className="h-4 w-4" />
-              Nuevo cálculo
+              Nuevo escaneo
             </Link>
           </div>
         </div>
@@ -216,6 +238,7 @@ export default function FeatureList() {
               <option value="1m">1m</option>
               <option value="5m">5m</option>
               <option value="15m">15m</option>
+              <option value="30m">30m</option>
               <option value="1h">1h</option>
               <option value="4h">4h</option>
               <option value="1d">1d</option>
@@ -245,8 +268,9 @@ export default function FeatureList() {
                 <th className="px-4 py-2.5">
                   <input
                     type="checkbox"
-                    checked={jobs.length > 0 && jobs.every((j) => selectedIds.has(j.id))}
+                    checked={allSelected}
                     onChange={toggleSelectAll}
+                    aria-label="Seleccionar todos los escaneos de la página"
                     className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
                   />
                 </th>
@@ -278,7 +302,7 @@ export default function FeatureList() {
                   sortOrder={sortOrder}
                   onSort={handleSort}
                 />
-                <th className="px-4 py-2.5">Indicadores</th>
+                <th className="px-4 py-2.5">Patrones</th>
                 <SortableTh
                   label="Progreso"
                   sortKey="processed_candles"
@@ -293,6 +317,7 @@ export default function FeatureList() {
                   sortOrder={sortOrder}
                   onSort={handleSort}
                 />
+                <th className="px-4 py-2.5 text-right">Acción</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
@@ -302,61 +327,78 @@ export default function FeatureList() {
                     colSpan={9}
                     className="px-4 py-10 text-center text-slate-500 dark:text-slate-400"
                   >
-                    No hay cálculos registrados.
+                    No hay escaneos registrados.
                   </td>
                 </tr>
               )}
-              {jobs.map((j) => (
-                <tr key={j.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50">
-                  <td className="px-4 py-2.5">
-                    <input
-                      type="checkbox"
-                      checked={selectedIds.has(j.id)}
-                      onChange={() => toggleSelect(j.id)}
-                      className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
-                    />
-                  </td>
-                  <td className="px-4 py-2.5">
-                    <StatusBadge status={j.status} />
-                  </td>
-                  <td className="px-4 py-2.5">
-                    <Link
-                      to={`/features/${j.id}`}
-                      className="font-medium text-indigo-600 hover:underline dark:text-indigo-400"
-                    >
-                      {j.symbol}
-                    </Link>
-                  </td>
-                  <td className="px-4 py-2.5 text-slate-600 dark:text-slate-300">{j.timeframe}</td>
-                  <td className="px-4 py-2.5 text-slate-600 dark:text-slate-300">
-                    {formatDateEs(j.date_from)} → {formatDateEs(j.date_to)}
-                  </td>
-                  <td className="px-4 py-2.5 text-slate-600 dark:text-slate-300">
-                    {j.indicators_config.length}
-                  </td>
-                  <td className="px-4 py-2.5">
-                    {j.status === "processing" ? (
-                      <ProgressBar current={j.processed_candles} total={j.total_candles} />
-                    ) : (
-                      <span className="text-slate-400 dark:text-slate-500">—</span>
-                    )}
-                  </td>
-                  <td className="px-4 py-2.5 text-slate-500 dark:text-slate-400">
-                    {formatDateTimeEs(j.created_at)}
-                  </td>
-                  <td className="px-4 py-2.5 text-right">
-                    <button
-                      type="button"
-                      onClick={() => openDeleteModal([j.id])}
-                      disabled={busy}
-                      className="rounded p-1 text-slate-400 hover:text-rose-600 disabled:opacity-40 dark:text-slate-500 dark:hover:text-rose-500"
-                      title="Borrar job"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
-                  </td>
-                </tr>
-              ))}
+              {jobs.map((j) => {
+                const live = !PATTERN_TERMINAL_STATUSES.includes(j.status);
+                return (
+                  <tr key={j.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50">
+                    <td className="px-4 py-2.5">
+                      <input
+                        type="checkbox"
+                        checked={selectedIds.has(j.id)}
+                        onChange={() => toggleSelect(j.id)}
+                        aria-label={`Seleccionar escaneo de ${j.symbol}`}
+                        className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                      />
+                    </td>
+                    <td className="px-4 py-2.5">
+                      <StatusBadge status={j.status} />
+                    </td>
+                    <td className="px-4 py-2.5">
+                      <Link
+                        to={`/patterns/scans/${j.id}`}
+                        className="font-medium text-indigo-600 hover:underline dark:text-indigo-400"
+                      >
+                        {j.symbol}
+                      </Link>
+                    </td>
+                    <td className="px-4 py-2.5 text-slate-600 dark:text-slate-300">
+                      {j.timeframe}
+                    </td>
+                    <td className="px-4 py-2.5 text-slate-600 dark:text-slate-300">
+                      {formatDateEs(j.date_from)} → {formatDateEs(j.date_to)}
+                    </td>
+                    <td className="px-4 py-2.5">
+                      <span className="text-slate-600 dark:text-slate-300">
+                        {j.patterns_config.length}
+                      </span>
+                      <span className="ml-1 text-xs text-slate-400 dark:text-slate-500">
+                        {j.patterns_config
+                          .map((p) => p.code.replace(/_.*$/, ""))
+                          .filter((v, i, arr) => arr.indexOf(v) === i)
+                          .join(", ") || "—"}
+                      </span>
+                    </td>
+                    <td className="px-4 py-2.5 text-slate-600 dark:text-slate-300">
+                      {live ? (
+                        <span className="text-xs">
+                          {j.processed_candles.toLocaleString("es-ES")} /{" "}
+                          {j.total_candles.toLocaleString("es-ES")}
+                        </span>
+                      ) : (
+                        <span className="text-slate-400 dark:text-slate-500">—</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-2.5 text-slate-500 dark:text-slate-400">
+                      {formatDateTimeEs(j.created_at)}
+                    </td>
+                    <td className="px-4 py-2.5 text-right">
+                      <button
+                        type="button"
+                        onClick={() => openDeleteModal([j.id])}
+                        disabled={busy}
+                        className="rounded p-1 text-slate-400 hover:text-rose-600 disabled:opacity-40 dark:text-slate-500 dark:hover:text-rose-500"
+                        title="Borrar escaneo"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -388,10 +430,10 @@ export default function FeatureList() {
         <DeleteJobModal
           open={modalOpen}
           jobIds={modalIds}
-          itemNoun="job"
-          consequence="junto con sus datos de features calculados"
+          itemNoun="escaneo"
+          consequence="junto con todas sus ocurrencias detectadas y sus logs. Las velas y los indicadores no se tocan"
           onClose={closeDeleteModal}
-          onConfirm={confirmDelete}
+          onConfirm={() => void confirmDelete()}
           busy={busy}
         />
       </div>

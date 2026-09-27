@@ -42,20 +42,36 @@ export interface PatternScanFilters {
 }
 
 /**
- * Filtros de `GET /occurrences` y `GET /occurrences/summary`.
+ * Filtros que aceptan `GET /occurrences` **y** `GET /occurrences/summary`.
  *
  * `patterns` va como CSV en la query, no como array: el backend lo parsea con
  * `_split_csv`. Se serializa aqui con `csv()` en vez de confiar en el
  * `paramsSerializer` de axios, que con arrays repetiria la clave y FastAPI se
  * quedaria solo con el ultimo valor.
+ *
+ * `job_id` **no** esta aqui a proposito: `occurrences_summary` no lo declara, y
+ * mandarlo seria peor que no mandarlo, porque FastAPI descarta en silencio los
+ * query params desconocidos y el resumen saldria de todo el histórico del
+ * símbolo en lugar de del job, sin un solo error por el camino.
  */
 export interface OccurrenceFilters {
-  job_id?: string;
   symbol?: string;
   timeframe?: string;
   patterns?: string[];
   date_from?: string;
   date_to?: string;
+}
+
+/** Filtros de la tabla maestra. Añade lo que el resumen no soporta. */
+export interface OccurrenceListFilters extends OccurrenceFilters {
+  job_id?: string;
+  /**
+   * Paginacion de `GET /occurrences`. No la acepta `getOccurrencesSummary`, que
+   * devuelve solo contadores.
+   */
+  page?: number;
+  /** Tope del backend: 500. */
+  page_size?: number;
 }
 
 /** Filtros de `GET /scans/{id}/chart`. */
@@ -209,7 +225,9 @@ export async function getAvailableData(): Promise<PatternAvailableData[]> {
 }
 
 /** Tabla maestra de ocurrencias de todos los jobs. */
-export async function getOccurrences(filters: OccurrenceFilters = {}): Promise<OccurrenceListOut> {
+export async function getOccurrences(
+  filters: OccurrenceListFilters = {},
+): Promise<OccurrenceListOut> {
   const { data } = await apiClient.get<OccurrenceListOut>("/occurrences", {
     params: { ...filters, patterns: csv(filters.patterns) },
   });
@@ -219,14 +237,20 @@ export async function getOccurrences(filters: OccurrenceFilters = {}): Promise<O
 /**
  * Agregados para las tarjetas de resumen.
  *
- * Sin paginacion a proposito: el endpoint devuelve solo contadores y los tres
- * `by_*`, pensado para pintar un panel de resumen, no una tabla.
+ * Sin paginacion a todas. El tipo de entrada no ofrece `page`, pero TypeScript
+ * es estructural: un `OccurrenceListFilters` es asignable a `OccurrenceFilters`
+ * y los campos de mas se cuelan tal cual en la query. Se separan aqui a mano
+ * para que el endpoint no reciba lo que no declara, en vez de confiar en que
+ * nadie pase el objeto equivocado.
  */
 export async function getOccurrencesSummary(
   filters: OccurrenceFilters = {},
 ): Promise<OccurrenceSummary> {
+  const { page, page_size, ...rest } = filters as OccurrenceListFilters;
+  void page;
+  void page_size;
   const { data } = await apiClient.get<OccurrenceSummary>("/occurrences/summary", {
-    params: { ...filters, patterns: csv(filters.patterns) },
+    params: { ...rest, patterns: csv(rest.patterns) },
   });
   return data;
 }

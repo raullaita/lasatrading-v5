@@ -4,12 +4,14 @@ import {
   Database,
   LayoutDashboard,
   LineChart,
+  Loader2,
   Moon,
   Rocket,
   ScanSearch,
   Sun,
   TableProperties,
 } from "lucide-react";
+import { lazy, Suspense } from "react";
 import { Link, NavLink, Route, Routes } from "react-router-dom";
 
 import { useTheme } from "./theme/theme";
@@ -20,6 +22,34 @@ import ImportDetail from "./pages/DataImport/ImportDetail";
 import ImportList from "./pages/DataImport/ImportList";
 import NewImport from "./pages/DataImport/NewImport";
 import DataExplorer from "./pages/DataExplorer/DataExplorer";
+
+// Las cuatro páginas de patrones van en carga diferida. Suman unos 67 kB y
+// ninguna hace falta en el primer render: quien entra por el panel de Welcome
+// no las va a mirar nunca, y quien viene de "Nuevo escaneo" carga una sola.
+// Con esto el chunk inicial se queda por debajo del umbral de 500 kB que avisa
+// Vite.
+const PatternList = lazy(() => import("./pages/Patterns/PatternList"));
+const NewPatternScan = lazy(() => import("./pages/Patterns/NewPatternScan"));
+const Occurrences = lazy(() => import("./pages/Patterns/Occurrences"));
+const ScanDetail = lazy(() => import("./pages/Patterns/ScanDetail"));
+
+/**
+ * Placeholder de carga de las rutas diferidas.
+ *
+ * Se ve un instante en cada salto dentro del módulo, así que muestra un
+ * indicador y no un blanco: un salto a `/patterns/occurrences` baja la tabla
+ * entera y el cambio de estado se percibe.
+ */
+function RouteFallback() {
+  return (
+    <main className="flex h-screen flex-1 items-center justify-center bg-slate-50 dark:bg-slate-950">
+      <div className="flex items-center gap-2 text-sm text-slate-500 dark:text-slate-400">
+        <Loader2 className="h-4 w-4 animate-spin text-indigo-600" />
+        Cargando…
+      </div>
+    </main>
+  );
+}
 
 const navItems = [
   { to: "/", label: "Inicio", icon: LayoutDashboard },
@@ -98,8 +128,8 @@ function Welcome() {
         </div>
         <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">LaSaTrading v5</h1>
         <p className="mt-2 text-slate-600 dark:text-slate-300">
-          El sistema se ha inicializado correctamente. Backend y frontend están operativos y
-          listos para el desarrollo.
+          El sistema se ha inicializado correctamente. Backend y frontend están operativos y listos
+          para el desarrollo.
         </p>
         <div className="mt-6 flex items-center justify-center gap-2 rounded-xl bg-emerald-50 py-3 text-sm font-medium text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400">
           <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-emerald-500" />
@@ -140,35 +170,48 @@ export default function App() {
   return (
     <div className="flex min-h-screen bg-slate-50 dark:bg-slate-950">
       <Sidebar />
-      <Routes>
-        <Route path="/" element={<Welcome />} />
-        <Route path="/import" element={<ImportList />} />
-        <Route path="/import/new" element={<NewImport />} />
-        <Route path="/import/:jobId" element={<ImportDetail />} />
-        <Route path="/data" element={<DataExplorer />} />
-        <Route path="/features" element={<FeatureList />} />
-        <Route path="/features/new" element={<NewFeatureJob />} />
-        <Route path="/features/:jobId" element={<FeatureDetail />} />
-        <Route path="/patterns" element={<ModulePlaceholder module="Detección de Patrones" />} />
-        <Route path="/backtesting" element={<ModulePlaceholder module="Backtesting" />} />
-        <Route path="/alerts" element={<ModulePlaceholder module="Alertas" />} />
-        <Route
-          path="*"
-          element={
-            <main className="flex h-screen flex-1 items-center justify-center bg-slate-50 p-8 dark:bg-slate-950">
-              <div className="text-center">
-                <p className="text-lg font-semibold text-slate-900 dark:text-slate-100">404</p>
-                <Link
-                  to="/"
-                  className="mt-2 inline-block text-sm text-indigo-600 hover:underline dark:text-indigo-400"
-                >
-                  Volver al inicio
-                </Link>
-              </div>
-            </main>
-          }
-        />
-      </Routes>
+      <Suspense fallback={<RouteFallback />}>
+        <Routes>
+          <Route path="/" element={<Welcome />} />
+          <Route path="/import" element={<ImportList />} />
+          <Route path="/import/new" element={<NewImport />} />
+          <Route path="/import/:jobId" element={<ImportDetail />} />
+          <Route path="/data" element={<DataExplorer />} />
+          <Route path="/features" element={<FeatureList />} />
+          <Route path="/features/new" element={<NewFeatureJob />} />
+          <Route path="/features/:jobId" element={<FeatureDetail />} />
+          {/*
+          Rutas de patrones. El orden importa: `/patterns/new` y
+          `/patterns/occurrences` son literales y tienen que declararse ANTES que
+          `/patterns/scans/:jobId`. React Router 6 puntua por segmentos, así que
+          un literal siempre gana a un parámetro y el orden no rompería nada...
+          pero dejarlos en ese orden hace evidente que es deliberado, y si
+          mañana alguien mete `/patterns/:algo` el conflicto se ve de inmediato.
+        */}
+          <Route path="/patterns" element={<PatternList />} />
+          <Route path="/patterns/new" element={<NewPatternScan />} />
+          <Route path="/patterns/occurrences" element={<Occurrences />} />
+          <Route path="/patterns/scans/:jobId" element={<ScanDetail />} />
+          <Route path="/backtesting" element={<ModulePlaceholder module="Backtesting" />} />
+          <Route path="/alerts" element={<ModulePlaceholder module="Alertas" />} />
+          <Route
+            path="*"
+            element={
+              <main className="flex h-screen flex-1 items-center justify-center bg-slate-50 p-8 dark:bg-slate-950">
+                <div className="text-center">
+                  <p className="text-lg font-semibold text-slate-900 dark:text-slate-100">404</p>
+                  <Link
+                    to="/"
+                    className="mt-2 inline-block text-sm text-indigo-600 hover:underline dark:text-indigo-400"
+                  >
+                    Volver al inicio
+                  </Link>
+                </div>
+              </main>
+            }
+          />
+        </Routes>
+      </Suspense>
     </div>
   );
 }

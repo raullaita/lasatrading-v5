@@ -7,7 +7,7 @@ import { CombinationList } from "../../components/DataImport/CombinationList";
 import { LogViewer } from "../../components/DataImport/LogViewer";
 import { PreviewModal } from "../../components/DataImport/PreviewModal";
 import { ProgressBar } from "../../components/DataImport/ProgressBar";
-import { StatusBadge } from "../../components/DataImport/StatusBadge";
+import { StatusBadge } from "../../components/ui/StatusBadge";
 import { StatsPanel } from "../../components/DataImport/StatsPanel";
 import { cancelImport, getJobStatus, getStats, requeueJob, retryJob } from "../../services/api";
 import { connectJobLogs, disconnectJobLogs } from "../../services/websocket";
@@ -86,7 +86,9 @@ export default function ImportDetail() {
   }, [jobId]);
 
   const onCancel = async () => {
-    if (!window.confirm("¿Cancelar esta importación? El trabajo se detendrá en el siguiente chunk.")) {
+    if (
+      !window.confirm("¿Cancelar esta importación? El trabajo se detendrá en el siguiente chunk.")
+    ) {
       return;
     }
     setCancelling(true);
@@ -116,9 +118,7 @@ export default function ImportDetail() {
 
   const onRequeue = async () => {
     if (
-      !window.confirm(
-        "Este job está pendiente o sin progreso. ¿Reenviarlo a la cola de Celery?",
-      )
+      !window.confirm("Este job está pendiente o sin progreso. ¿Reenviarlo a la cola de Celery?")
     ) {
       return;
     }
@@ -144,7 +144,9 @@ export default function ImportDetail() {
     return (
       <main className="flex h-screen flex-1 items-center justify-center bg-slate-50 p-8 dark:bg-slate-950">
         <div className="text-center">
-          <p className="text-lg font-semibold text-slate-900 dark:text-slate-100">{error ?? "Sin datos"}</p>
+          <p className="text-lg font-semibold text-slate-900 dark:text-slate-100">
+            {error ?? "Sin datos"}
+          </p>
           <Link
             to="/import"
             className="mt-2 inline-block text-sm text-indigo-600 hover:underline dark:text-indigo-400"
@@ -173,10 +175,7 @@ export default function ImportDetail() {
   return (
     <main className="h-screen flex-1 overflow-y-auto bg-slate-50 p-8 dark:bg-slate-950">
       <div className="mx-auto max-w-5xl">
-        <Link
-          to="/import"
-          className="text-sm text-indigo-600 hover:underline dark:text-indigo-400"
-        >
+        <Link to="/import" className="text-sm text-indigo-600 hover:underline dark:text-indigo-400">
           ← Importaciones
         </Link>
 

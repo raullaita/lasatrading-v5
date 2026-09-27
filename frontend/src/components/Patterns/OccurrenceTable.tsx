@@ -6,7 +6,7 @@ import type { PatternDirection, PatternOccurrence } from "../../types/patterns";
  * Filas que se pintan de golpe. El endpoint de ocurrencias admite `page_size`
  * alto y el chart llega a pedir hasta 5.000, así que hay un "mostrar más" en
  * vez de renderizar el listado entero: 5.000 filas con un `<details>` cada una
- * son 15.000 nodos y el navegador empieza a_ir_al_dash.
+ * son 15.000 nodos y el navegador se arrastra.
  */
 const PAGE_SIZE = 50;
 
@@ -96,11 +96,20 @@ function MetadataCell({ occurrence }: { occurrence: PatternOccurrence }) {
 export function OccurrenceTable({
   occurrences,
   onViewChart,
+  onViewOccurrence,
   emptyMessage = "Sin ocurrencias para los filtros seleccionados.",
 }: {
   occurrences: PatternOccurrence[];
   /** Lleva la vista del gráfico a esa vela. Lo llama "Ver en gráfico". */
   onViewChart: (timestamp: string) => void;
+  /**
+   * Variante con la ocurrencia entera, para cuando el consumidor necesita más
+   * que la fecha: la tabla global navega al escaneo dueño y esa información
+   * viaja en `scan_job_id`, que no se puede recuperar de un timestamp porque
+   * varios patrones pueden caer en la misma vela. Si se pasa, tiene prioridad
+   * sobre `onViewChart`.
+   */
+  onViewOccurrence?: (occurrence: PatternOccurrence) => void;
   emptyMessage?: string;
 }) {
   const [visible, setVisible] = useState(PAGE_SIZE);
@@ -182,7 +191,11 @@ export function OccurrenceTable({
                   <td className="whitespace-nowrap px-3 py-2 text-right">
                     <button
                       type="button"
-                      onClick={() => onViewChart(occurrence.timestamp)}
+                      onClick={() =>
+                        onViewOccurrence
+                          ? onViewOccurrence(occurrence)
+                          : onViewChart(occurrence.timestamp)
+                      }
                       className="inline-flex items-center gap-1 rounded-md border border-slate-300 px-2 py-1 text-[11px] font-medium text-slate-700 transition-colors hover:border-indigo-400 hover:text-indigo-600 dark:border-slate-700 dark:text-slate-300 dark:hover:border-indigo-400 dark:hover:text-indigo-400"
                     >
                       <Crosshair className="h-3 w-3" />

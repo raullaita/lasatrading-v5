@@ -5,10 +5,10 @@ import {
   type IChartApi,
   type ISeriesApi,
   type LineData,
-  type SeriesMarker,
   type Time,
 } from "lightweight-charts";
 import { useTheme } from "../../theme/theme";
+import { isFiniteNumber, prepareMarkers, toUnixSeconds } from "./patternUtils";
 import type {
   PatternChartCandle,
   PatternChartIndicatorPoint,
@@ -48,67 +48,6 @@ const THEME_COLORS = {
 
 /** Velas visibles alrededor de la vela resaltada, por lado. */
 const HIGHLIGHT_WINDOW_BARS = 60;
-
-function isFiniteNumber(value: unknown): value is number {
-  return typeof value === "number" && Number.isFinite(value);
-}
-
-/**
- * De ISO 8601 a segundos Unix, que es la unidad de tiempo que espera
- * lightweight-charts. Devuelve `null` para lo que no parsea, en vez de `NaN`:
- * un `NaN` en la serie rompe la libreria entera, mientras que saltarse la vela
- * solo deja un hueco.
- */
-function toUnixSeconds(iso: string): number | null {
-  const ms = new Date(iso).getTime();
-  return Number.isFinite(ms) ? Math.floor(ms / 1000) : null;
-}
-
-type PreparedMarker = SeriesMarker<Time> & { seconds: number };
-
-/**
- * Convierte los markers del backend a los de lightweight-charts.
- *
- * Dos cosas no son directo y por eso hay una funcion aparte:
- *
- * 1. **Orden.** `setMarkers` exige el array ordenado por tiempo. El backend lo
- *    entrega descendente, porque `get_occurrences` pagina con
- *    `ORDER BY timestamp DESC` para que la tabla de la UI salga de mas reciente
- *    a mas antigua. Sin reordenar, los markers se dibujan fuera de sitio o la
- *    libreria los descarta.
- * 2. **Correspondencia con velas.** Un marker en una vela que no esta en el
- *    rango no se dibuja y la libreria avisa por consola. Se filtran aqui.
- *
- * El tiempo va como Unix en segundos, que es lo que acepta la libreria cuando
- * `time` es numerico; los indices del servidor se pasan tal cual, sin
- * cuantizar.
- *
- * Los markers cuyo timestamp no coincide con ninguna vela, o cuya serie ya se
- * ha llenado, se descartan aqui en vez de confiar en la libreria.
- */
-export function prepareMarkers(
-  markers: PatternChartMarker[],
-  candleSeconds: Set<number>,
-): PreparedMarker[] {
-  const seen = new Map<number, PreparedMarker>();
-  for (const marker of markers) {
-    const seconds = toUnixSeconds(marker.timestamp);
-    if (seconds === null || !candleSeconds.has(seconds)) continue;
-    // Varias detecciones en la misma vela: la primera gana para no apilar
-    // flechas encima. La lista completa sigue estando en OccurrenceTable.
-    if (seen.has(seconds)) continue;
-
-    seen.set(seconds, {
-      time: seconds as Time,
-      position: marker.position,
-      shape: marker.shape,
-      color: marker.color,
-      text: marker.text,
-      seconds,
-    });
-  }
-  return Array.from(seen.values()).sort((a, b) => a.seconds - b.seconds);
-}
 
 export function PatternChart({
   candles,

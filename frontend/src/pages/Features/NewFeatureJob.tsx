@@ -37,12 +37,12 @@ export default function NewFeatureJob() {
 
   const availableSymbols = [...new Set(availableData.map((d) => d.symbol))].sort();
 
-const stepValid: boolean[] = [
+  const stepValid: boolean[] = [
     !!symbol && !!timeframe,
     !!(range.from && range.to && range.from < range.to),
     indicators.length > 0,
     true,
-];
+  ];
 
   const isLast = step === STEPS.length - 1;
 
@@ -68,7 +68,9 @@ const stepValid: boolean[] = [
   return (
     <main className="h-screen flex-1 overflow-y-auto bg-slate-50 p-8 dark:bg-slate-950">
       <div className="mx-auto w-full max-w-2xl">
-        <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">Nuevo cálculo de indicadores</h1>
+        <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">
+          Nuevo cálculo de indicadores
+        </h1>
         <p className="mb-6 text-sm text-slate-500 dark:text-slate-400">{STEPS[step].description}</p>
 
         <ol className="mb-8 flex items-center gap-2">
@@ -78,13 +80,21 @@ const stepValid: boolean[] = [
                 type="button"
                 onClick={() => i < step && setStep(i)}
                 className={`flex h-8 w-8 items-center justify-center rounded-full text-sm font-semibold ${
-                  i <= step ? "bg-indigo-600 text-white" : "border border-slate-300 bg-white text-slate-400 dark:border-slate-700 dark:bg-slate-900"
+                  i <= step
+                    ? "bg-indigo-600 text-white"
+                    : "border border-slate-300 bg-white text-slate-400 dark:border-slate-700 dark:bg-slate-900"
                 }`}
               >
                 {i + 1}
               </button>
               {i < STEPS.length - 1 && (
-                <span className={i < step ? "h-0.5 w-6 bg-indigo-600" : "h-0.5 w-6 bg-slate-200 dark:bg-slate-800"} />
+                <span
+                  className={
+                    i < step
+                      ? "h-0.5 w-6 bg-indigo-600"
+                      : "h-0.5 w-6 bg-slate-200 dark:bg-slate-800"
+                  }
+                />
               )}
             </li>
           ))}
@@ -94,27 +104,41 @@ const stepValid: boolean[] = [
           {step === 0 && (
             <div className="space-y-4">
               <label className="block">
-                <span className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-300">Símbolo</span>
+                <span className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-300">
+                  Símbolo
+                </span>
                 <select
                   value={symbol}
-                  onChange={(e) => { setSymbol(e.target.value); setError(null); }}
+                  onChange={(e) => {
+                    setSymbol(e.target.value);
+                    setError(null);
+                  }}
                   className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
                 >
                   <option value="">Selecciona un símbolo</option>
                   {availableSymbols.map((s) => (
-                    <option key={s} value={s}>{s}</option>
+                    <option key={s} value={s}>
+                      {s}
+                    </option>
                   ))}
                 </select>
               </label>
               <label className="block">
-                <span className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-300">Timeframe</span>
+                <span className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-300">
+                  Timeframe
+                </span>
                 <select
                   value={timeframe}
-                  onChange={(e) => { setTimeframe(e.target.value); setError(null); }}
+                  onChange={(e) => {
+                    setTimeframe(e.target.value);
+                    setError(null);
+                  }}
                   className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
                 >
                   {TIMEFRAMES.map((tf) => (
-                    <option key={tf} value={tf}>{tf}</option>
+                    <option key={tf} value={tf}>
+                      {tf}
+                    </option>
                   ))}
                 </select>
               </label>
@@ -122,13 +146,13 @@ const stepValid: boolean[] = [
             </div>
           )}
 
-          {step === 1 && (
-            <IndicatorSelector indicators={indicators} onChange={setIndicators} />
-          )}
+          {step === 1 && <IndicatorSelector indicators={indicators} onChange={setIndicators} />}
 
           {step === 2 && (
             <div className="space-y-3">
-              <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100">Resumen de la configuración</h3>
+              <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100">
+                Resumen de la configuración
+              </h3>
               <div className="grid gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-800/50">
                 <div>
                   <span className="text-xs text-slate-500 dark:text-slate-400">Símbolo</span>
@@ -136,12 +160,16 @@ const stepValid: boolean[] = [
                 </div>
                 <div>
                   <span className="text-xs text-slate-500 dark:text-slate-400">Timeframe</span>
-                  <p className="text-sm font-medium text-slate-800 dark:text-slate-200">{timeframe}</p>
+                  <p className="text-sm font-medium text-slate-800 dark:text-slate-200">
+                    {timeframe}
+                  </p>
                 </div>
                 <div>
                   <span className="text-xs text-slate-500 dark:text-slate-400">Período</span>
                   <p className="text-sm font-medium text-slate-800 dark:text-slate-200">
-                    {range.from && range.to ? `${formatDateEs(range.from)} → ${formatDateEs(range.to)}` : "Sin rango"}
+                    {range.from && range.to
+                      ? `${formatDateEs(range.from)} → ${formatDateEs(range.to)}`
+                      : "Sin rango"}
                   </p>
                 </div>
                 <div>
@@ -152,19 +180,23 @@ const stepValid: boolean[] = [
                 </div>
               </div>
               <p className="text-xs text-slate-400 dark:text-slate-500">
-                Tiempo estimado: ~{Math.max(1, Math.ceil(indicators.length * 2))}s por {indicators.length} indicador(es).
+                Tiempo estimado: ~{Math.max(1, Math.ceil(indicators.length * 2))}s por{" "}
+                {indicators.length} indicador(es).
               </p>
             </div>
           )}
 
           {step === 3 && (
             <div className="space-y-3">
-              <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100">Confirmar cálculo</h3>
+              <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100">
+                Confirmar cálculo
+              </h3>
               <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 dark:border-emerald-900 dark:bg-emerald-950/40">
                 <p className="text-sm text-emerald-800 dark:text-emerald-300">
                   ¿Estás seguro de iniciar el cálculo de {indicators.length} indicador(es) para{" "}
                   <strong>{symbol}</strong> ({timeframe}) entre{" "}
-                  <strong>{formatDateEs(range.from)}</strong> y <strong>{formatDateEs(range.to)}</strong>?
+                  <strong>{formatDateEs(range.from)}</strong> y{" "}
+                  <strong>{formatDateEs(range.to)}</strong>?
                 </p>
               </div>
             </div>
@@ -186,7 +218,11 @@ const stepValid: boolean[] = [
                 disabled={submitting || !stepValid[step]}
                 className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-5 py-2 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-40"
               >
-                {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowRight className="h-4 w-4" />}
+                {submitting ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <ArrowRight className="h-4 w-4" />
+                )}
                 Iniciar cálculo
               </button>
             ) : (

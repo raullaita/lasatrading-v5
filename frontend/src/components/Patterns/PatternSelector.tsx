@@ -41,7 +41,7 @@ function clamp(value: number, spec: PatternParamSpec): number {
   return Math.min(spec.maximum, Math.max(spec.minimum, value));
 }
 
-/** Dedonde sale la direccion para pintar el badge. */
+/** Clases del badge de direccion, reutilizadas en el selector. */
 function badgeClasses(direction: string): string {
   return direction === "bullish"
     ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300"

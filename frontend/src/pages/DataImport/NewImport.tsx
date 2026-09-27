@@ -3,7 +3,10 @@ import { useEffect, useState } from "react";
 import { ArrowLeft, ArrowRight, Loader2 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
-import { DateRangePicker, type DateRange } from "../../components/DataImport/wizard/DateRangePicker";
+import {
+  DateRangePicker,
+  type DateRange,
+} from "../../components/DataImport/wizard/DateRangePicker";
 import { ImportOptions } from "../../components/DataImport/wizard/ImportOptions";
 import { ImportSummary } from "../../components/DataImport/wizard/ImportSummary";
 import { SymbolSelector } from "../../components/DataImport/wizard/SymbolSelector";
@@ -113,19 +116,36 @@ export default function NewImport() {
                 {i + 1}
               </button>
               {i < STEPS.length - 1 && (
-                <span className={i < step ? "h-0.5 w-6 bg-indigo-600" : "h-0.5 w-6 bg-slate-200 dark:bg-slate-800"} />
+                <span
+                  className={
+                    i < step
+                      ? "h-0.5 w-6 bg-indigo-600"
+                      : "h-0.5 w-6 bg-slate-200 dark:bg-slate-800"
+                  }
+                />
               )}
             </li>
           ))}
         </ol>
 
         <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-          {step === 0 && <SymbolSelector available={available} selected={symbols} onToggle={toggleSymbol} />}
+          {step === 0 && (
+            <SymbolSelector available={available} selected={symbols} onToggle={toggleSymbol} />
+          )}
           {step === 1 && <TimeframeSelector selected={timeframes} onChange={setTimeframes} />}
           {step === 2 && <DateRangePicker value={range} onChange={setRange} />}
           {step === 3 && <ImportOptions value={mode} onChange={setMode} />}
           {step === 4 && (
-            <ImportSummary config={{ symbols, timeframes, date_from: range.from, date_to: range.to, import_mode: mode }} combinations={totalCombinations} />
+            <ImportSummary
+              config={{
+                symbols,
+                timeframes,
+                date_from: range.from,
+                date_to: range.to,
+                import_mode: mode,
+              }}
+              combinations={totalCombinations}
+            />
           )}
 
           <div className="mt-8 flex items-center justify-between border-t border-slate-100 pt-5 dark:border-slate-800">
@@ -145,7 +165,11 @@ export default function NewImport() {
                 disabled={submitting || !stepValid[step]}
                 className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-5 py-2 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-40"
               >
-                {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowRight className="h-4 w-4" />}
+                {submitting ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <ArrowRight className="h-4 w-4" />
+                )}
                 Iniciar importación
               </button>
             ) : (

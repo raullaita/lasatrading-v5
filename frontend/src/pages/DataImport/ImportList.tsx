@@ -3,8 +3,8 @@ import { useCallback, useEffect, useState } from "react";
 import { Plus, RefreshCw, Trash2 } from "lucide-react";
 import { Link } from "react-router-dom";
 
-import { DeleteJobModal } from "../../components/DataImport/DeleteJobModal";
-import { StatusBadge } from "../../components/DataImport/StatusBadge";
+import { DeleteJobModal } from "../../components/ui/DeleteJobModal";
+import { StatusBadge } from "../../components/ui/StatusBadge";
 import { SortableTh } from "../../components/ui/SortableTh";
 import { deleteJob, deleteJobsBatch, listJobs, type JobListQuery } from "../../services/api";
 import type { JobListItem } from "../../types/dataImport";
@@ -287,7 +287,10 @@ export default function ImportList() {
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
               {jobs.length === 0 && !loading && (
                 <tr>
-                  <td colSpan={9} className="px-4 py-10 text-center text-slate-500 dark:text-slate-400">
+                  <td
+                    colSpan={9}
+                    className="px-4 py-10 text-center text-slate-500 dark:text-slate-400"
+                  >
                     No hay importaciones registradas.
                   </td>
                 </tr>
@@ -375,6 +378,8 @@ export default function ImportList() {
         <DeleteJobModal
           open={modalOpen}
           jobIds={modalIds}
+          itemNoun="job"
+          consequence="junto con sus combinaciones y logs. Las velas asociadas no se eliminarán"
           onClose={closeDeleteModal}
           onConfirm={confirmDelete}
           busy={busy}

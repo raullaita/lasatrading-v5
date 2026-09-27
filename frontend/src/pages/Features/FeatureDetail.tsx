@@ -8,7 +8,7 @@ import { IndicatorList } from "../../components/Features/IndicatorList";
 import { LogViewer } from "../../components/Features/LogViewer";
 import { PreviewModal } from "../../components/Features/PreviewModal";
 import { ProgressBar } from "../../components/Features/ProgressBar";
-import { StatusBadge } from "../../components/Features/StatusBadge";
+import { StatusBadge } from "../../components/ui/StatusBadge";
 import { StatsPanel } from "../../components/Features/StatsPanel";
 import {
   cancelFeatureJob,
@@ -55,7 +55,7 @@ export default function FeatureDetail() {
       setPreviewError(
         err instanceof Error
           ? `No se pudieron cargar los datos del cálculo: ${err.message}`
-          : "No se pudieron cargar los datos del cálculo."
+          : "No se pudieron cargar los datos del cálculo.",
       );
     }
   }, [jobId]);
@@ -132,7 +132,9 @@ export default function FeatureDetail() {
   }
 
   async function onRequeue() {
-    if (!window.confirm("Este job está pendiente o sin progreso. ¿Reenviarlo a la cola de Celery?")) {
+    if (
+      !window.confirm("Este job está pendiente o sin progreso. ¿Reenviarlo a la cola de Celery?")
+    ) {
       return;
     }
     setRequeuing(true);
@@ -331,9 +333,7 @@ export default function FeatureDetail() {
           )}
         </div>
       </div>
-      {showPreview && (
-        <PreviewModal jobId={jobId} onClose={() => setShowPreview(false)} />
-      )}
+      {showPreview && <PreviewModal jobId={jobId} onClose={() => setShowPreview(false)} />}
     </main>
   );
 }
