@@ -472,7 +472,12 @@ def _sharpe(equity: pd.DataFrame) -> float | None:
         return None
     periods_per_year = 365.0 * 24 * 3600.0
     index = equity.index
-    deltas = np.diff(index.view("int64"))
+    # Los intervalos se sacan con aritmetica de ``Timedelta`` y no dividiendo
+    # enteros crudos: ``DatetimeIndex.asi8`` devuelve la resolucion interna, que
+    # cambio de nanosegundos a microsegundos entre versiones de pandas, y
+    # hardcodear el divisor hacia que el Sharpe valiese cero o mil millones de
+    # veces lo que corresponde.
+    deltas = pd.Series(index).diff().dt.total_seconds().dropna().to_numpy(dtype=float)
     if deltas.size == 0 or deltas.min() <= 0:
         return None
     return float(returns.mean() / std * np.sqrt(periods_per_year / np.median(deltas)))

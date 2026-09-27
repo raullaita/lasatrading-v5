@@ -796,3 +796,28 @@ def test_los_2_812_senales_reales_caben_en_el_presupuesto() -> None:
     assert result.trades, "una corrida de 2.812 senales debe producir operaciones"
     assert elapsed < 5.0, f"tardo {elapsed:.2f}s, el presupuesto es 5s"
     assert result.skipped_signals > 0, "con max_hold=24 tiene que haber solapes"
+
+
+def test_sharpe_se_anualiza_por_velas_horarias() -> None:
+    """El Sharpe es el unico sitio donde la unidad del intervalo se nota.
+
+    Una curva que solo sube en el ultimo tramo da un Sharpe enorme y positivo.
+    El factor de anualizacion tiene que salir de la separacion **en segundos**
+    entre velas: mezclarla con los nanosegundos de ``DatetimeIndex.asi8``
+    divide el factor entre mil millones y devuelve un 0.00 que parece un cero
+    y oculta una estrategia que pierde el 24%.
+    """
+    from app.modules.backtesting.engine import _sharpe
+
+    index = pd.date_range(START, periods=4, freq="h", tz="UTC", name="timestamp")
+    equity = pd.DataFrame({"equity": [100.0, 100.0, 100.0, 110.0]}, index=index)
+
+    retornos = [0.0, 0.0, 0.1]
+    media = sum(retornos) / 3
+    desviacion = (
+        sum((r - media) ** 2 for r in retornos) / 2
+    ) ** 0.5  # ddof=1 sobre 3 observaciones
+    esperado = media / desviacion * (365 * 24) ** 0.5  # 8760 periodos al año
+
+    assert _sharpe(equity) == pytest.approx(esperado)
+    assert _sharpe(equity) > 50, "un +10% en tres horas sale enorme, no 0.00"
