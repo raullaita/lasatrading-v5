@@ -14,6 +14,7 @@ import {
   cancelPatternScan,
   clearPatternScanLogs,
   deletePatternScan,
+  getPatternCatalog,
   getPatternScan,
   getPatternScanChart,
   getPatternScanOccurrences,
@@ -26,6 +27,7 @@ import {
 import {
   PATTERN_TERMINAL_STATUSES,
   type PatternChartData,
+  type PatternDefinition,
   type PatternOccurrence,
   type PatternScanJobResponse,
   type PatternScanLog,
@@ -50,6 +52,7 @@ export default function ScanDetail() {
   const [occPage, setOccPage] = useState(1);
   const [chart, setChart] = useState<PatternChartData | null>(null);
   const [chartError, setChartError] = useState<string | null>(null);
+  const [catalog, setCatalog] = useState<PatternDefinition[]>([]);
   const [wsConnected, setWsConnected] = useState(false);
   const [loading, setLoading] = useState(true);
   /**
@@ -107,6 +110,21 @@ export default function ScanDetail() {
     }
   }, [jobId, occPage]);
 
+  /**
+   * Catálogo de patrones, solo para saber qué indicadores exige cada uno.
+   *
+   * `GET /scans/{id}/chart` no devuelve líneas de indicadores por su cuenta: hay que
+   * pedirlos con `features`, y sin ese parámetro el gráfico sale limpio de
+   * cualquier trazo sobre las velas. Se cargan aquí los que el job utilizó de
+   * verdad, no todos los del par: son los que explican por qué saltó la
+   * detección.
+   */
+  useEffect(() => {
+    void getPatternCatalog()
+      .then(setCatalog)
+      .catch(() => setCatalog([]));
+  }, []);
+
   useEffect(() => {
     disposedRef.current = false;
     chartLoadedRef.current = false;
@@ -126,9 +144,31 @@ export default function ScanDetail() {
     return disconnect;
   }, [jobId, attempt]);
 
+  /**
+   * CSV de indicadores a dibujar, derivado de los patrones del job.
+   *
+   * Es un string y no un array a propósito: `useCallback` compara sus
+   * dependencias por identidad, y un array nuevo en cada sondeo (cada 2 s)
+   * recrearía `loadChart` y remontaría el efecto de sondeo sin parar. Dos
+   * strings con el mismo contenido son el mismo valor, así que el sondeo no se
+   * reinicia aunque `job` cambie de referencia.
+   */
+  const featuresParam = useMemo(() => {
+    if (!job) return "";
+    const codes = new Set(job.patterns_config.map((p) => p.code));
+    const feats = new Set<string>();
+    for (const definition of catalog) {
+      if (!codes.has(definition.code)) continue;
+      for (const feature of definition.required_features) feats.add(feature);
+    }
+    return [...feats].join(",");
+  }, [job, catalog]);
+
   const loadChart = useCallback(async () => {
     try {
-      const data = await getPatternScanChart(jobId);
+      const data = await getPatternScanChart(jobId, {
+        features: featuresParam ? featuresParam.split(",") : undefined,
+      });
       if (!disposedRef.current) {
         setChart(data);
         setChartError(null);
@@ -139,7 +179,7 @@ export default function ScanDetail() {
         setChartError("No se pudo cargar el gráfico de este escaneo.");
       }
     }
-  }, [jobId]);
+  }, [jobId, featuresParam]);
 
   useEffect(() => {
     const present = (next: PatternScanJobResponse) => {
@@ -150,11 +190,9 @@ export default function ScanDetail() {
       if (PATTERN_TERMINAL_STATUSES.includes(next.status)) {
         // El backend cierra el socket al llegar a un estado final: dejarlo
         // abierto solo gastaria reintentos del cliente contra un socket muerto.
+        // El gráfico no se pide aquí: depende del catálogo, y hay otro efecto
+        // que espera a tener las dos cosas.
         disconnectPatternScanLogs(jobId);
-        if (!chartLoadedRef.current) {
-          chartLoadedRef.current = true;
-          void loadChart();
-        }
       }
     };
 
@@ -180,6 +218,21 @@ export default function ScanDetail() {
 
     return () => window.clearInterval(timer);
   }, [jobId, loadChart, attempt]);
+
+  /**
+   * El gráfico se pide cuando el job termina **y** ya se sabe qué indicadores
+   * dibujar. Son las dos condiciones, no una: si un escaneo se completa en dos
+   * segundos y el catálogo aún no ha llegado, pedirlo en ese momento devolvería
+   * un gráfico sin ninguna línea y `chartLoadedRef` impediría pedirlo después.
+   */
+  useEffect(() => {
+    if (!job) return;
+    if (!PATTERN_TERMINAL_STATUSES.includes(job.status)) return;
+    if (catalog.length === 0) return;
+    if (chartLoadedRef.current) return;
+    chartLoadedRef.current = true;
+    void loadChart();
+  }, [job, catalog, loadChart]);
 
   useEffect(() => {
     void loadOccurrences();
