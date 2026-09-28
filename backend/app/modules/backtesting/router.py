@@ -16,8 +16,10 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.modules.backtesting import tasks
+from app.modules.backtesting.analysis import AnalysisError
 from app.modules.backtesting.models import BacktestLog, BacktestRun, BacktestRunStatus
 from app.modules.backtesting.schemas import (
+    BacktestAnalysisOut,
     BacktestAvailableScansOut,
     BacktestCreateIn,
     BacktestEquitySeriesOut,
@@ -26,14 +28,17 @@ from app.modules.backtesting.schemas import (
     BacktestRunListOut,
     BacktestRunOut,
     BacktestSummaryOut,
+    BacktestSweepOut,
     BacktestTradeListOut,
     BacktestTradeOut,
     BatchDeleteBody,
+    SweepGridIn,
 )
 from app.modules.backtesting.service import (
     SORTABLE_TRADE_COLUMNS,
     BacktestService,
     RunFilters,
+    RunNotFinished,
     RunNotFound,
     ScanNotReady,
 )
@@ -223,6 +228,51 @@ def get_trades_by_pattern(run_id: uuid.UUID, db: Session = Depends(get_db)):
     """Desglose por patron y direccion, ordenado por PnL acumulado."""
     _run_or_404(db, run_id)
     return BacktestService().get_trades_by_pattern(db, run_id)
+
+
+@router.get("/{run_id}/analysis", response_model=BacktestAnalysisOut)
+def get_backtest_analysis(run_id: uuid.UUID, db: Session = Depends(get_db)):
+    """Percentiles de MAE y MFE por patron, con propuesta teorica de TP y SL.
+
+    Solo responde 200 sobre un run **completado**. Un run en curso tiene
+    operaciones sin excursion final y uno cancelado las tiene a medias, asi que
+    sus percentiles serian dos veces mas Peacock- el numero que la UI enseño hace
+    un minuto. 409 y no 400: el run existe, simplemente aun no se puede mirar.
+    """
+    try:
+        return BacktestService().get_run_analysis(db, run_id)
+    except RunNotFound as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except RunNotFinished as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.post("/{run_id}/sweep", response_model=BacktestSweepOut)
+def sweep_backtest(body: SweepGridIn, run_id: uuid.UUID, db: Session = Depends(get_db)):
+    """Vuelve a simular el run con otras combinaciones de TP, SL y ``max_hold``.
+
+    Es **POST y no GET** por una razon que no es de semantica HTTP: una
+    re-simulacion es trabajo, y aunque no escriba nada, con 120 combinaciones
+    tarda lo que tarda. Un GET que tarda treinta segundos se cachea, se
+    precarga y se puede disparar dos veces con una pestana.
+
+    No persiste nada. El unico estado que toca es leer velas, señales y la
+    estrategia congelada del run.
+    """
+    service = BacktestService()
+    try:
+        return service.sweep_run(db, run_id, body)
+    except RunNotFound as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except RunNotFinished as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except ScanNotReady as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except AnalysisError as exc:
+        # La rejilla llego entera y es valida en forma; lo que falla es una
+        # combinacion concreta (los dos niveles a null, por ejemplo). 422, no
+        # 500: es una peticion que no se puede atender tal cual.
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 # --------------------------------------------------------------------------

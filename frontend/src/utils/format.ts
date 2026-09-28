@@ -63,3 +63,20 @@ export function formatRate(value: number | string | null | undefined): string {
   if (n === null) return "—";
   return formatPercent(n * 100);
 }
+
+/**
+ * Ratio numerico sin sufijo (profit factor, Sharpe).
+ *
+ * Sin sufijo a proposito: estos numeros no son porcentajes y ponerles un "%" los
+ * haria legibles como algo que son. Dos decimales es la precision con la que
+ * un Sharpe distingue una estrategia de otra; con cuatro, no.
+ *
+ * Vive aqui y no en la pagina del detalle porque la tabla del barrido pinta
+ * Sharpe en las mismas filas donde la tarjeta lo pinta en la cabecera: si cada
+ * uno tuvo su copia, un dia uno subnetiran tres decimales y el otro dos.
+ */
+export function formatPctPlain(value: number | string | null | undefined): string {
+  const n = toNumber(value);
+  if (n === null) return "—";
+  return n.toLocaleString("es-ES", { maximumFractionDigits: 2 });
+}

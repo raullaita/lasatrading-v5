@@ -17,6 +17,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field, model_validator
 
+from app.modules.backtesting.analysis import MAX_SWEEP_COMBINATIONS
 from app.modules.backtesting.engine import StrategyConfig, StrategyError
 from app.modules.backtesting.models import BacktestRunStatus, ExitReason, TradeDirection
 
@@ -244,3 +245,159 @@ class BacktestAvailableScansOut(BaseModel):
 
 class BatchDeleteBody(BaseModel):
     run_ids: list[UUID] = Field(min_length=1, max_length=100)
+
+
+# ---------------------------------------------------------------------------
+# Analisis y calibracion
+#
+# Todo lo que sigue se deriva de las columnas que ya existen (``mae`` y ``mfe``)
+# y de una re-simulacion en memoria: no hay tablas nuevas y no hay migracion.
+# Los porcentajes van en ``Decimal`` por el mismo motivo que el resto del
+# modulo, aunque no sean dinero: son la misma magnitud que ``return_pct``, y
+# mezclar ``float`` con ``Decimal`` en la misma respuesta obligaria al frontend
+# a distinguir dos tipos de numero para el mismo concepto.
+# ---------------------------------------------------------------------------
+class ExcursionBucketOut(BaseModel):
+    """Caja del histograma de una excursion."""
+
+    lower: Decimal
+    upper: Decimal
+    count: int
+
+
+class ExcursionStatsOut(BaseModel):
+    """Distribucion de MAE o MFE: percentiles, extremos e histograma.
+
+    ``capped_at_pct`` viaja con la distribucion, no como nota aparte, porque es
+    parte del dato: sin el, un percentil 90 clavado en el take profit del run se
+    lee como una oportunidad de mercado cuando en realidad es el techo que el
+    propio run se puso. ``is_capped`` ya viene resuelto para que la UI solo tenga
+    que pintar la advertencia.
+    """
+
+    count: int
+    p10: Decimal | None = None
+    p25: Decimal | None = None
+    p50: Decimal | None = None
+    p75: Decimal | None = None
+    p90: Decimal | None = None
+    minimum: Decimal | None = None
+    maximum: Decimal | None = None
+    mean: Decimal | None = None
+    buckets: list[ExcursionBucketOut] = Field(default_factory=list)
+    capped_at_pct: Decimal | None = None
+    is_capped: bool = False
+
+
+class PatternCalibrationOut(BaseModel):
+    """Calibracion de un patron en una direccion."""
+
+    pattern_name: str
+    direction: TradeDirection
+    trades: int
+    wins: int
+    losses: int
+    #: Operaciones cuyo cierre no lo decidio ningun nivel del run. De ahi salen
+    #: las sugerencias: son las unicas sin techo puesto por el TP o el SL.
+    free_trades: int
+    winner_mfe: ExcursionStatsOut
+    loser_mae: ExcursionStatsOut
+    free_mfe: ExcursionStatsOut
+    free_mae: ExcursionStatsOut
+    suggested_take_profit_pct: Decimal | None = None
+    suggested_stop_loss_pct: Decimal | None = None
+    findings: list[str] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+
+
+class BacktestAnalysisOut(BaseModel):
+    """Analisis completo de un run.
+
+    ``strategy`` es la del propio run, para que la UI pueda contraponer "lo que
+    usaste" contra "lo que dicen los datos" sin tener que pedir el run aparte.
+    """
+
+    run_id: UUID
+    strategy: BacktestRunOut
+    trades: int
+    #: Operaciones del run entero que ningun nivel corto. Es la poblacion de la
+    #: que salen las propuestas globales: puede ser mayor que la suma de las de
+    #: los grupos solo en apariencia, porque cada grupo necesita llegar al minimo
+    #: por su cuenta.
+    free_trades: int = 0
+    pooled_mfe: ExcursionStatsOut = Field(default_factory=ExcursionStatsOut)
+    pooled_mae: ExcursionStatsOut = Field(default_factory=ExcursionStatsOut)
+    groups: list[PatternCalibrationOut] = Field(default_factory=list)
+    suggested_take_profit_pct: Decimal | None = None
+    suggested_stop_loss_pct: Decimal | None = None
+    findings: list[str] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+
+
+class SweepGridIn(BaseModel):
+    """Rejilla de TP, SL y ``max_hold`` a simular.
+
+    Un ``null`` en la lista de TP o de SL es "sin ese nivel", que es una
+    combinacion legitima (operar solo con tiempo limite, por ejemplo). El tope de
+    combinaciones se comprueba aqui y no en el servicio, para que el rechazo sea
+    un 422 con el detalle de cuantos eran, y no un 500 a mitad de la simulacion.
+    """
+
+    take_profit_pcts: list[float | None] = Field(min_length=1, max_length=8)
+    stop_loss_pcts: list[float | None] = Field(min_length=1, max_length=8)
+    max_holds: list[int] = Field(
+        min_length=1, max_length=8, default_factory=lambda: [24]
+    )
+
+    @model_validator(mode="after")
+    def _validate_grid(self) -> SweepGridIn:
+        for value in [*self.take_profit_pcts, *self.stop_loss_pcts]:
+            if value is not None and value <= 0:
+                raise ValueError("Los niveles del barrido deben ser > 0 o null")
+        if any(hold < 1 for hold in self.max_holds):
+            raise ValueError("max_hold debe ser >= 1")
+        combinaciones = (
+            len(self.take_profit_pcts) * len(self.stop_loss_pcts) * len(self.max_holds)
+        )
+        if combinaciones > MAX_SWEEP_COMBINATIONS:
+            raise ValueError(
+                f"La rejilla tiene {combinaciones} combinaciones y el tope es "
+                f"{MAX_SWEEP_COMBINATIONS}: reduce los valores de TP, SL o max_hold"
+            )
+        return self
+
+
+class SweepPointOut(BaseModel):
+    """Fila de la tabla comparativa del barrido. Nada de esto se persiste."""
+
+    take_profit_pct: Decimal | None = None
+    stop_loss_pct: Decimal | None = None
+    max_hold: int
+    total_trades: int
+    skipped_signals: int
+    net_pnl: Decimal
+    total_return_pct: Decimal
+    win_rate: Decimal | None = None
+    profit_factor: Decimal | None = None
+    max_drawdown_pct: Decimal
+    sharpe_ratio: Decimal | None = None
+    avg_bars_held: Decimal | None = None
+    #: Reparto de motivos de cierre. Es la columna que explica *por que* cambia
+    #: el resultado al mover un nivel: subir el TP convierte salidas por take
+    #: profit en timeouts, y eso se ve aqui y no en un agregado.
+    exits: dict[str, int] = Field(default_factory=dict)
+    is_baseline: bool = False
+
+
+class BacktestSweepOut(BaseModel):
+    """Resultado del barrido, ordenado de mejor a peor por PnL neto."""
+
+    run_id: UUID
+    strategy: BacktestRunOut
+    points: list[SweepPointOut] = Field(default_factory=list)
+    #: Combinaciones pedidas y simuladas. Difieren cuando alguna celda de la
+    #: rejilla era invalida (los dos niveles a null, por ejemplo) y se explicita
+    #: para que la UI no finja que se simularon todas.
+    requested: int
+    simulated: int
+    elapsed_ms: int

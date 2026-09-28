@@ -29,6 +29,7 @@ impone el dominio:
 from __future__ import annotations
 
 import math
+import time
 import uuid
 from collections.abc import Sequence
 from dataclasses import dataclass
@@ -42,7 +43,17 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.database import SessionLocal
+from app.modules.backtesting.analysis import (
+    ExcursionStats,
+    PatternCalibration,
+    SweepGrid,
+    SweepPoint,
+    TradeSample,
+    calibrate_run,
+    sweep,
+)
 from app.modules.backtesting.engine import (
+    END_OF_DATA,
     BacktestResult,
     StrategyConfig,
     TradeResult,
@@ -56,11 +67,18 @@ from app.modules.backtesting.models import (
     BacktestTrade,
 )
 from app.modules.backtesting.schemas import (
+    BacktestAnalysisOut,
     BacktestCreateIn,
     BacktestEquitySeriesOut,
     BacktestExitReasonOut,
     BacktestPatternBreakdownOut,
+    BacktestRunOut,
     BacktestSummaryOut,
+    BacktestSweepOut,
+    ExcursionStatsOut,
+    PatternCalibrationOut,
+    SweepGridIn,
+    SweepPointOut,
 )
 from app.modules.data.candles import load_candles
 from app.modules.patterns.models import (
@@ -117,6 +135,10 @@ SORTABLE_TRADE_COLUMNS = {
 
 class RunNotFound(Exception):
     pass
+
+
+class RunNotFinished(Exception):
+    """El run no esta terminado y su resultado todavia no significa nada."""
 
 
 class ScanNotReady(Exception):
@@ -829,6 +851,139 @@ class BacktestService:
         db.commit()
         return deleted.rowcount or 0
 
+    # ----------------------------------------------------- analisis y barrido
+
+    def get_run_analysis(self, db: Session, run_id: uuid.UUID) -> BacktestAnalysisOut:
+        """Percentiles de MAE/MFE por patron, con propuesta teorica de TP y SL.
+
+        No hay tablas nuevas: se leen las columnas ``mae`` y ``mfe`` que el motor
+        ya escribio en cada operacion. La unica conversion que se hace al leerlas es de
+        fraccion a porcentaje, porque en la columna estan en fraccion (``0.012``
+        es un 1,2%) y todo lo de mas habla en porcentaje.
+
+        Solo tiene sentido sobre un run **terminado**: una operacion en curso no
+        tiene excursion final, y un run cancelado tiene operaciones a medias que
+        falsearian todos los percentiles. Por eso se exige ``completed`` y el
+        router devuelve 409 en cualquier otro estado.
+        """
+        run = self.get_run(db, run_id)
+        if run.status != BacktestRunStatus.COMPLETED.value:
+            raise RunNotFinished(
+                "Solo un run completado se puede analizar: mientras está en curso o "
+                "fallido sus operaciones no tienen excursion final"
+            )
+
+        samples = self._load_samples(db, run_id)
+        strategy = StrategyConfig(**strategy_params(run.strategy))
+        calibration = calibrate_run(
+            samples, strategy.take_profit_pct, strategy.stop_loss_pct
+        )
+        return BacktestAnalysisOut(
+            run_id=run.id,
+            strategy=BacktestRunOut.model_validate(run),
+            trades=calibration.trades,
+            free_trades=calibration.free_trades,
+            pooled_mfe=_stats_out(calibration.pooled_mfe),
+            pooled_mae=_stats_out(calibration.pooled_mae),
+            groups=[_group_out(group) for group in calibration.groups],
+            suggested_take_profit_pct=_decimal(calibration.suggested_take_profit_pct),
+            suggested_stop_loss_pct=_decimal(calibration.suggested_stop_loss_pct),
+            findings=list(calibration.findings),
+            warnings=list(calibration.warnings),
+        )
+
+    def sweep_run(
+        self, db: Session, run_id: uuid.UUID, body: SweepGridIn
+    ) -> BacktestSweepOut:
+        """Vuelve a simular el run con otras combinaciones de TP, SL y ``max_hold``.
+
+        Reutiliza **las mismas velas y las mismas señales** que alimentaron el
+        run, con los mismos filtros congelados en su ``strategy``. Si el barrido
+        usara todas las señales del escaneo, compararia dos experimentos
+        distintos y la tabla diria que un nivel es mejor cuando lo único que
+        cambio fue el conjunto de señales.
+
+        Y no escribe nada: ni un ``backtest_runs``, ni operaciones, ni equity, ni
+        logs. Es una pregunta, no un experimento, y por eso se puede repetir sin
+        ensuciar la base ni llenar la lista de runs que el usuario tiene que
+        borrar despues.
+        """
+        run = self.get_run(db, run_id)
+        if run.status != BacktestRunStatus.COMPLETED.value:
+            raise RunNotFinished(
+                "Solo un run completado se puede calibrar: el barrido compara "
+                "variaciones sobre unos resultados que todavia no existen"
+            )
+        scan = db.get(PatternScanJob, run.scan_job_id)
+        if scan is None:
+            raise RunNotFound("El escaneo de origen ya no existe")
+
+        filters = strategy_filters(run.strategy)
+        signals = self._load_signals(db, run_id, filters)
+        candles = load_candles(
+            scan.symbol, scan.timeframe, scan.date_from, scan.date_to
+        )
+        if candles.empty:
+            raise ScanNotReady(
+                f"No hay velas de {scan.symbol} {scan.timeframe} en el rango "
+                f"del escaneo"
+            )
+
+        base = StrategyConfig(**strategy_params(run.strategy))
+        grid = SweepGrid(
+            take_profit_pcts=tuple(body.take_profit_pcts),
+            stop_loss_pcts=tuple(body.stop_loss_pcts),
+            max_holds=tuple(body.max_holds),
+        )
+        started = time.perf_counter()
+        points = sweep(candles, signals, base, grid)
+        elapsed_ms = int((time.perf_counter() - started) * 1000)
+
+        return BacktestSweepOut(
+            run_id=run.id,
+            strategy=BacktestRunOut.model_validate(run),
+            points=[_sweep_out(point) for point in points],
+            requested=grid.combinations(),
+            simulated=len(points),
+            elapsed_ms=elapsed_ms,
+        )
+
+    def _load_samples(self, db: Session, run_id: uuid.UUID) -> tuple[TradeSample, ...]:
+        """Las operaciones del run, aplanadas a lo que el analisis necesita.
+
+        Se traen todas y se calculan los percentiles en Python, no en SQL. Es la
+        decision contraintuitiva de este metodo: un ``percentile_cont`` de
+        PostgreSQL dariia los percentiles en una pasada, pero cada grupo por
+        patron necesita los suyos, el motor solo trae un percentil agregado y
+        partirlo por patron en SQL obliga a una ventana por grupo sobre miles de
+        filas. Con las volumetrias de este modulo (miles de operaciones) el
+        agregado en memoria es de milisegundos y el codigo es legible.
+        """
+        rows = db.execute(
+            select(
+                BacktestTrade.pattern_name,
+                BacktestTrade.direction,
+                BacktestTrade.exit_reason,
+                BacktestTrade.net_pnl,
+                BacktestTrade.mae,
+                BacktestTrade.mfe,
+            ).where(BacktestTrade.run_id == run_id)
+        ).all()
+        return tuple(
+            TradeSample(
+                pattern_name=row.pattern_name,
+                direction=row.direction,
+                exit_reason=row.exit_reason or END_OF_DATA,
+                net_pnl=float(row.net_pnl or 0.0),
+                # La conversion de fraccion a porcentaje ocurre aqui y en ningun
+                # otro sitio. La columna guarda 0,012 para un 1,2%: multiplicar
+                # por cien es lo que separa un TP de 1,2% de uno de 120%.
+                mfe=float(row.mfe) * 100 if row.mfe is not None else None,
+                mae=float(row.mae) * 100 if row.mae is not None else None,
+            )
+            for row in rows
+        )
+
 
 # --------------------------------------------------------------------------
 # Helpers de la columna strategy
@@ -862,6 +1017,64 @@ def strategy_filters(payload: dict) -> RunFilters:
     return RunFilters(
         patterns=tuple(patterns) if patterns else None,
         directions=tuple(directions) if directions else None,
+    )
+
+
+def _stats_out(stats: ExcursionStats) -> ExcursionStatsOut:
+    return ExcursionStatsOut(
+        count=stats.count,
+        p10=_decimal(stats.p10),
+        p25=_decimal(stats.p25),
+        p50=_decimal(stats.p50),
+        p75=_decimal(stats.p75),
+        p90=_decimal(stats.p90),
+        minimum=_decimal(stats.minimum),
+        maximum=_decimal(stats.maximum),
+        mean=_decimal(stats.mean),
+        buckets=[
+            {"lower": _decimal(b.lower), "upper": _decimal(b.upper), "count": b.count}
+            for b in stats.buckets
+        ],
+        capped_at_pct=_decimal(stats.capped_at_pct),
+        is_capped=stats.is_capped,
+    )
+
+
+def _group_out(group: PatternCalibration) -> PatternCalibrationOut:
+    return PatternCalibrationOut(
+        pattern_name=group.pattern_name,
+        direction=group.direction,
+        trades=group.trades,
+        wins=group.wins,
+        losses=group.losses,
+        free_trades=group.free_trades,
+        winner_mfe=_stats_out(group.winner_mfe),
+        loser_mae=_stats_out(group.loser_mae),
+        free_mfe=_stats_out(group.free_mfe),
+        free_mae=_stats_out(group.free_mae),
+        suggested_take_profit_pct=_decimal(group.suggested_take_profit_pct),
+        suggested_stop_loss_pct=_decimal(group.suggested_stop_loss_pct),
+        findings=list(group.findings),
+        warnings=list(group.warnings),
+    )
+
+
+def _sweep_out(point: SweepPoint) -> SweepPointOut:
+    return SweepPointOut(
+        take_profit_pct=_decimal(point.take_profit_pct),
+        stop_loss_pct=_decimal(point.stop_loss_pct),
+        max_hold=point.max_hold,
+        total_trades=point.total_trades,
+        skipped_signals=point.skipped_signals,
+        net_pnl=_decimal(point.net_pnl) or Decimal(0),
+        total_return_pct=_decimal(point.total_return_pct) or Decimal(0),
+        win_rate=_decimal(point.win_rate),
+        profit_factor=_decimal(point.profit_factor),
+        max_drawdown_pct=_decimal(point.max_drawdown_pct) or Decimal(0),
+        sharpe_ratio=_decimal(point.sharpe_ratio),
+        avg_bars_held=_decimal(point.avg_bars_held),
+        exits=point.exits,
+        is_baseline=point.is_baseline,
     )
 
 

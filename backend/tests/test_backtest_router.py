@@ -100,6 +100,8 @@ def test_los_endpoints_esperados_estan_montados(client):
         (f"{PREFIX}/{{run_id}}/trades/by-pattern", "get"),
         (f"{PREFIX}/{{run_id}}/cancel", "post"),
         (f"{PREFIX}/{{run_id}}/requeue", "post"),
+        (f"{PREFIX}/{{run_id}}/analysis", "get"),
+        (f"{PREFIX}/{{run_id}}/sweep", "post"),
     }
     montadas = {
         (ruta, metodo)
@@ -389,3 +391,168 @@ def test_la_tarea_no_es_async():
     despues con ``TypeError: a coroutine was expected``, dejando el run en
     ``completed`` con la tarea en ``FAILURE``."""
     assert not inspect.iscoroutinefunction(tasks.run_backtest_task.run)
+
+
+# ---------------------------------------------------------------------------
+# Analisis y calibracion
+# ---------------------------------------------------------------------------
+def test_el_analisis_devuelve_los_grupos_con_sus_percentiles(
+    client, service, db, scan_job
+):
+    run = crear(service, db, scan_job, max_hold=6)
+    service.execute_run(run.id)
+    # ``execute_run`` confirma en su propia sesion; la de estos tests tiene el
+    # run cacheado en ``pending`` y el endpoint leeria un estado que ya no es.
+    db.expire_all()
+
+    respuesta = client.get(f"{PREFIX}/{run.id}/analysis")
+
+    assert respuesta.status_code == 200, respuesta.text
+    cuerpo = respuesta.json()
+    assert cuerpo["run_id"] == str(run.id)
+    assert cuerpo["trades"] > 0
+    assert cuerpo["groups"]
+    grupo = cuerpo["groups"][0]
+    assert {"p10", "p25", "p50", "p75", "p90"} <= set(grupo["winner_mfe"])
+    assert grupo["winner_mfe"]["capped_at_pct"] is not None
+    assert grupo["free_mfe"]["capped_at_pct"] is None
+    assert "findings" in grupo and "warnings" in grupo
+
+
+def test_el_analisis_de_un_run_inexistente_devuelve_404(client):
+    respuesta = client.get(f"{PREFIX}/{uuid.uuid4()}/analysis")
+
+    assert respuesta.status_code == 404
+
+
+def test_el_analisis_de_un_run_sin_terminar_devuelve_409(client, service, db, scan_job):
+    """409 y no 400: el run existe y no esta mal formado, simplemente aun no se
+    puede mirar. La UI distingue "no existe" de "aun no" con el codigo."""
+    run = crear(service, db, scan_job, max_hold=6)
+
+    respuesta = client.get(f"{PREFIX}/{run.id}/analysis")
+
+    assert respuesta.status_code == 409
+    assert "completado" in respuesta.json()["detail"]
+
+
+def test_el_barrido_devuelve_la_tabla_comparativa(client, service, db, scan_job):
+    run = crear(service, db, scan_job, max_hold=6)
+    service.execute_run(run.id)
+    # ``execute_run`` confirma en su propia sesion; la de estos tests tiene el
+    # run cacheado en ``pending`` y el endpoint leeria un estado que ya no es.
+    db.expire_all()
+
+    respuesta = client.post(
+        f"{PREFIX}/{run.id}/sweep",
+        json={
+            # La rejilla incluye los parametros del propio run (TP 2,0, SL 1,0 y
+            # max_hold 6), que es lo que hace que una fila venga marcada como
+            # base y el usuario tenga contra que comparar el resto.
+            "take_profit_pcts": [2.0, 6.0],
+            "stop_loss_pcts": [1.0, 2.0],
+            "max_holds": [6],
+        },
+    )
+
+    assert respuesta.status_code == 200, respuesta.text
+    cuerpo = respuesta.json()
+    assert cuerpo["requested"] == 4
+    assert cuerpo["simulated"] == 4
+    assert len(cuerpo["points"]) == 4
+    punto = cuerpo["points"][0]
+    assert {
+        "take_profit_pct",
+        "stop_loss_pct",
+        "max_hold",
+        "net_pnl",
+        "win_rate",
+    } <= set(punto)
+    assert "exits" in punto
+    assert sum(p["is_baseline"] for p in cuerpo["points"]) == 1
+
+
+def test_el_barrido_no_encola_nada_en_celery(client, service, db, scan_job, sin_celery):
+    """El barrido es una lectura cara, no un trabajo: si encolase, cada barrido
+    de la UI dejaria un run "en curso" que nadie mira y acabaria en la lista."""
+    run = crear(service, db, scan_job, max_hold=6)
+    service.execute_run(run.id)
+    # ``execute_run`` confirma en su propia sesion; la de estos tests tiene el
+    # run cacheado en ``pending`` y el endpoint leeria un estado que ya no es.
+    db.expire_all()
+
+    respuesta = client.post(
+        f"{PREFIX}/{run.id}/sweep",
+        json={"take_profit_pcts": [3.0], "stop_loss_pcts": [2.0], "max_holds": [4]},
+    )
+
+    assert respuesta.status_code == 200
+    sin_celery.assert_not_called()
+
+
+def test_una_rejilla_demasiado_grande_devuelve_422(client, service, db, scan_job):
+    """El tope se comprueba en el contrato, no en el servicio, para que el
+    rechazo llegue con el detalle de cuantas combinaciones eran."""
+    run = crear(service, db, scan_job, max_hold=6)
+    service.execute_run(run.id)
+    # ``execute_run`` confirma en su propia sesion; la de estos tests tiene el
+    # run cacheado en ``pending`` y el endpoint leeria un estado que ya no es.
+    db.expire_all()
+
+    respuesta = client.post(
+        f"{PREFIX}/{run.id}/sweep",
+        json={
+            "take_profit_pcts": [1.0] * 8,
+            "stop_loss_pcts": [1.0] * 8,
+            "max_holds": [1, 2, 3, 4],
+        },
+    )
+
+    assert respuesta.status_code == 422
+    assert "tope" in respuesta.text
+
+
+def test_una_rejilla_vacia_devuelve_422(client, service, db, scan_job):
+    run = crear(service, db, scan_job, max_hold=6)
+    service.execute_run(run.id)
+    # ``execute_run`` confirma en su propia sesion; la de estos tests tiene el
+    # run cacheado en ``pending`` y el endpoint leeria un estado que ya no es.
+    db.expire_all()
+
+    respuesta = client.post(
+        f"{PREFIX}/{run.id}/sweep",
+        json={"take_profit_pcts": [], "stop_loss_pcts": [1.0], "max_holds": [4]},
+    )
+
+    assert respuesta.status_code == 422
+
+
+def test_el_barrido_de_un_run_sin_terminar_devuelve_409(client, service, db, scan_job):
+    run = crear(service, db, scan_job, max_hold=6)
+
+    respuesta = client.post(
+        f"{PREFIX}/{run.id}/sweep",
+        json={"take_profit_pcts": [1.0], "stop_loss_pcts": [1.0], "max_holds": [4]},
+    )
+
+    assert respuesta.status_code == 409
+
+
+def test_una_rejilla_sin_la_estrategia_del_run_no_marca_ninguna_fila(
+    client, service, db, scan_job
+):
+    """``is_baseline`` dice "esta fila es la que ya tienes guardada", asi que
+    marcar la mejor de la rejilla como base seria mentir. Si los parametros del
+    run no estan en la rejilla, no hay fila base y la tabla lo dice con cero
+    marcadas en vez de inventar una."""
+    run = crear(service, db, scan_job, max_hold=6)
+    service.execute_run(run.id)
+    db.expire_all()
+
+    respuesta = client.post(
+        f"{PREFIX}/{run.id}/sweep",
+        json={"take_profit_pcts": [6.0], "stop_loss_pcts": [4.0], "max_holds": [3]},
+    )
+
+    assert respuesta.status_code == 200, respuesta.text
+    assert sum(p["is_baseline"] for p in respuesta.json()["points"]) == 0

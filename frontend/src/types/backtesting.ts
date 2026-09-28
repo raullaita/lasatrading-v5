@@ -258,9 +258,131 @@ export interface BacktestAvailableScansOut {
 }
 
 // ---------------------------------------------------------------------------
-// Logs
+// Analisis y calibracion
 // ---------------------------------------------------------------------------
 
+/** Caja del histograma de una excursion, con los bordes en porcentaje. */
+export interface ExcursionBucket {
+  lower: string;
+  upper: string;
+  count: number;
+}
+
+/**
+ * `ExcursionStatsOut`: distribucion de MAE o MFE de una poblacion.
+ *
+ * Ojo al signo y a las unidades, que son las dos trampas del modulo:
+ *
+ * * Los percentiles van **en porcentaje y positivos** para el MFE y tambien
+ *   para el MAE, que viaja en valor absoluto. El backend convierte la
+ *   fraccion de la columna (`0.012`) al leerla; si aqui se dividiera por 100
+ *   otra vez, un MAE del 1,2% se pintaria como 0,012%.
+ * * `capped_at_pct` es el nivel del run que recorta esta poblacion (el TP para
+ *   las ganadoras, el SL para las perdedoras) e `is_capped` dice si los datos
+ *   llegaron a tocarlo. Sin esto, un percentil 90 clavado en el TP se lee como
+ *   una oportunidad de mercado cuando es el techo que se puso uno mismo.
+ */
+export interface ExcursionStats {
+  count: number;
+  p10: string | null;
+  p25: string | null;
+  p50: string | null;
+  p75: string | null;
+  p90: string | null;
+  minimum: string | null;
+  maximum: string | null;
+  mean: string | null;
+  buckets: ExcursionBucket[];
+  capped_at_pct: string | null;
+  is_capped: boolean;
+}
+
+/** `PatternCalibrationOut`: un patron en una direccion. */
+export interface PatternCalibration {
+  pattern_name: string;
+  direction: TradeDirection;
+  trades: number;
+  wins: number;
+  losses: number;
+  /**
+   * Operaciones cuyo cierre no lo decidio ningun nivel del run. De ahi salen
+   * las propuestas, porque son las unicas sin techo puesto por el TP o el SL.
+   */
+  free_trades: number;
+  winner_mfe: ExcursionStats;
+  loser_mae: ExcursionStats;
+  free_mfe: ExcursionStats;
+  free_mae: ExcursionStats;
+  suggested_take_profit_pct: string | null;
+  /**
+   * Siempre `null` en la version actual, y no por un hueco pendiente: el nivel
+   * del stop no es calibrable con percentiles (ver `BacktestAnalysis`). El
+   * barrido de parametros es quien lo mide.
+   */
+  suggested_stop_loss_pct: string | null;
+  findings: string[];
+  warnings: string[];
+}
+
+/** `BacktestAnalysisOut`. */
+export interface BacktestAnalysis {
+  run_id: string;
+  strategy: BacktestRunResponse;
+  trades: number;
+  free_trades: number;
+  pooled_mfe: ExcursionStats;
+  pooled_mae: ExcursionStats;
+  groups: PatternCalibration[];
+  /**
+   * Teorico, del percentil 50 de las operaciones que ningún nivel corto. Es un
+   * punto de partida, no un optimo: la magnitud buena la dice el barrido.
+   */
+  suggested_take_profit_pct: string | null;
+  suggested_stop_loss_pct: string | null;
+  findings: string[];
+  warnings: string[];
+}
+
+/** Peticion de `POST /{id}/sweep`. Un `null` es "sin ese nivel". */
+export interface SweepGrid {
+  take_profit_pcts: (number | null)[];
+  stop_loss_pcts: (number | null)[];
+  max_holds: number[];
+}
+
+/** `SweepPointOut`: una fila de la tabla comparativa. Nada de esto se guarda. */
+export interface SweepPoint {
+  take_profit_pct: string | null;
+  stop_loss_pct: string | null;
+  max_hold: number;
+  total_trades: number;
+  skipped_signals: number;
+  net_pnl: string;
+  total_return_pct: string;
+  win_rate: string | null;
+  profit_factor: string | null;
+  max_drawdown_pct: string;
+  sharpe_ratio: string | null;
+  avg_bars_held: string | null;
+  /** Reparto de motivos de cierre: explica *por que* cambia el resultado. */
+  exits: Record<string, number>;
+  /** `true` si la fila es la combinacion que ya usaba el run. */
+  is_baseline: boolean;
+}
+
+/** `BacktestSweepOut`. */
+export interface BacktestSweep {
+  run_id: string;
+  strategy: BacktestRunResponse;
+  points: SweepPoint[];
+  requested: number;
+  simulated: number;
+  elapsed_ms: number;
+}
+
+// ---------------------------------------------------------------------------
+// Logs
+// ---------------------------------------------------------------------------
 export type BacktestLogLevel = "info" | "warning" | "error";
 
 /** `BacktestLogOut`. El backend emite `progress` siempre, aunque sea `null`. */

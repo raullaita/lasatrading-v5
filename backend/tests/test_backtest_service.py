@@ -18,15 +18,27 @@ from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
 import pytest
-from app.modules.backtesting.models import BacktestRun, BacktestRunStatus
-from app.modules.backtesting.schemas import BacktestCreateIn, BacktestStrategyIn
+from app.modules.backtesting.models import (
+    BacktestEquityPoint,
+    BacktestLog,
+    BacktestRun,
+    BacktestRunStatus,
+    BacktestTrade,
+)
+from app.modules.backtesting.schemas import (
+    BacktestCreateIn,
+    BacktestStrategyIn,
+    SweepGridIn,
+)
 from app.modules.backtesting.service import (
     RunFilters,
+    RunNotFinished,
     RunNotFound,
     ScanNotReady,
     strategy_filters,
     strategy_params,
 )
+from sqlalchemy import func, select
 
 pytestmark = pytest.mark.filterwarnings("error::RuntimeWarning")
 
@@ -775,3 +787,236 @@ def test_cancelar_a_mitad_de_escribir_deja_el_run_cancelado(db, service, scan_jo
     assert run.net_pnl is None, "_finish_run no debio cerrar el run"
     assert run.total_trades == 0
     assert _contar(db, run.id)["equity"] == 60, "la equity ya escrita se conserva"
+
+
+# ---------------------------------------------------------------------------
+# Analisis y calibracion
+# ---------------------------------------------------------------------------
+def test_el_analisis_devuelve_grupos_por_patron_y_direccion(
+    db, service, run_con_operaciones
+):
+    """Cada patron y direccion sale como un grupo, con la misma poblacion que
+    el desglose de ``/summary`` pero con las excursiones troceadas en
+    percentiles."""
+    analisis = service.get_run_analysis(db, run_con_operaciones.id)
+
+    assert analisis.trades == run_con_operaciones.total_trades
+    assert analisis.strategy.id == run_con_operaciones.id
+    assert len(analisis.groups) == len(
+        {(t.pattern_name, t.direction) for t in analisis.groups}
+    ), "un grupo por patron y direccion, sin repetir"
+    for grupo in analisis.groups:
+        assert grupo.wins + grupo.losses <= grupo.trades
+        assert grupo.winner_mfe.count == grupo.wins
+        assert grupo.loser_mae.count == grupo.losses
+        # Las libres son un subconjunto de las del grupo, no una poblacion
+        # aparte: si apareciera mas libre que trades, el filtro de motivos
+        # estaria contando algo que no esta en la base.
+        assert grupo.free_trades <= grupo.trades
+
+
+def test_las_excursiones_llegan_en_porcentaje_y_no_en_fraccion(
+    db, service, run_con_operaciones
+):
+    """La columna guarda fraccion (0,012 = 1,2%) y la respuesta va en
+    porcentaje. Es la conversion mas importante del metodo: si se olvidara, un
+    MFE de 1,2% llegaria a la UI como 0,012 y todos los percentiles serian mil
+    veces mas pequenos de lo que son, sin que ningun valor se viera absurdo."""
+    operaciones, _, _ = service.get_run_trades(db, run_con_operaciones.id)
+    analisis = service.get_run_analysis(db, run_con_operaciones.id)
+
+    esperado = max(float(t.mfe) * 100 for t in operaciones if t.mfe is not None)
+    maxima = [
+        float(g.winner_mfe.maximum)
+        for g in analisis.groups
+        if g.winner_mfe.maximum is not None
+    ]
+    assert maxima, "el fixture tiene ganadoras"
+    assert max(maxima) == pytest.approx(esperado, abs=0.01)
+
+
+def test_las_ganadoras_no_pasan_del_take_profit_del_run(
+    db, service, run_con_operaciones
+):
+    """El techo del recorte viaja en la respuesta, que es lo que permite a la UI
+    avisar en vez de pintar una distribucion que parece mas ancha de lo real."""
+    analisis = service.get_run_analysis(db, run_con_operaciones.id)
+    tp = float(run_con_operaciones.strategy["take_profit_pct"])
+
+    for grupo in analisis.groups:
+        assert grupo.winner_mfe.capped_at_pct == pytest.approx(tp)
+        if grupo.winner_mfe.maximum is not None:
+            assert float(grupo.winner_mfe.maximum) <= tp + 0.1
+        assert grupo.free_mfe.capped_at_pct is None
+
+
+def test_el_analisis_de_un_run_en_curso_no_devuelve_400(db, service, scan_job):
+    """Un run pendiente no tiene operaciones y sus percentiles no dirian nada,
+    pero el motivo es que aun no se ha ejecutado: 409, no 400 ni un 200 con
+    listas vacias que la UI interpretaria como "no hubo operaciones"."""
+    run = crear(db, service, scan_job, strategy=BacktestStrategyIn(max_hold=6))
+
+    with pytest.raises(RunNotFinished):
+        service.get_run_analysis(db, run.id)
+
+
+def test_el_analisis_de_un_run_cancelado_tampoco(db, service, run_con_operaciones):
+    """Un run cancelado tiene operaciones a medias, y sus MAE y MFE son de
+    posiciones que no llegaron a su cierre real."""
+    run_con_operaciones.status = BacktestRunStatus.CANCELLED.value
+    db.commit()
+
+    with pytest.raises(RunNotFinished):
+        service.get_run_analysis(db, run_con_operaciones.id)
+
+
+def test_el_barrido_no_escribe_nada_en_la_base(db, service, run_con_operaciones):
+    """El requisito duro del barrido: es una pregunta, no un experimento.
+
+    Se cuentan filas y estado del run antes y despues. Un barrido que escribiera
+    120 runs llenaria la lista del usuario de runs que tiene que borrar a mano, y
+    un ``rollback`` al final no serviria de nada.
+    """
+
+    def cuenta() -> tuple[int, int, int, int]:
+        operaciones = db.scalar(select(func.count()).select_from(BacktestTrade))
+        puntos = db.scalar(select(func.count()).select_from(BacktestEquityPoint))
+        logs = db.scalar(select(func.count()).select_from(BacktestLog))
+        runs = db.scalar(select(func.count()).select_from(BacktestRun))
+        return operaciones, puntos, logs, runs
+
+    antes = cuenta()
+    estado_antes = db.get(BacktestRun, run_con_operaciones.id)
+
+    resultado = service.sweep_run(
+        db,
+        run_con_operaciones.id,
+        SweepGridIn(
+            take_profit_pcts=[1.0, 2.0, 3.0],
+            stop_loss_pcts=[0.5, 1.0],
+            max_holds=[6, 12],
+        ),
+    )
+
+    assert resultado.simulated == 12
+    assert resultado.requested == 12
+    assert len(resultado.points) == 12
+    assert cuenta() == antes, "el barrido no puede crear ni una fila"
+    db.expire_all()
+    despues = db.get(BacktestRun, run_con_operaciones.id)
+    assert despues.status == estado_antes.status
+    assert despues.total_trades == estado_antes.total_trades
+    assert despues.equity_final == estado_antes.equity_final
+    assert despues.updated_at == estado_antes.updated_at
+
+
+def test_el_barrido_incluye_la_estrategia_del_run_como_baseline(
+    db, service, run_con_operaciones
+):
+    """Sin la marca, la tabla comparativa no tiene contra que medir y el usuario
+    no puede saber si un nivel mejora o empeora lo que ya tenia."""
+    resultado = service.sweep_run(
+        db,
+        run_con_operaciones.id,
+        SweepGridIn(take_profit_pcts=[2.0, 4.0], stop_loss_pcts=[1.0], max_holds=[6]),
+    )
+
+    base = [p for p in resultado.points if p.is_baseline]
+    assert len(base) == 1
+    assert base[0].take_profit_pct == 2.0
+    assert base[0].stop_loss_pct == 1.0
+    assert base[0].max_hold == 6
+
+
+def test_el_barrido_usa_las_mismas_senales_filtradas_que_el_run(db, service, scan_job):
+    """El caso que haria que el barrido mintiera: si el run se simulo sobre un
+    subconjunto de patrones y el barrido usara todas las señales del escaneo,
+    compararia dos experimentos distintos y diria que un nivel es mejor cuando
+    lo unico que cambio fue el conjunto de señales."""
+    run = crear(
+        db,
+        service,
+        scan_job,
+        strategy=BacktestStrategyIn(max_hold=6),
+        patterns=["MACD_CROSS_BULLISH"],
+    )
+    service.execute_run(run.id)
+    db.expire_all()
+
+    resultado = service.sweep_run(
+        db,
+        run.id,
+        SweepGridIn(take_profit_pcts=[6.0], stop_loss_pcts=[6.0], max_holds=[6]),
+    )
+    base = resultado.points[0]
+
+    assert base.total_trades == db.get(BacktestRun, run.id).total_trades
+    assert base.total_trades < 4, "con un solo patron no pueden salir las 4 señales"
+
+
+def test_el_barrido_ordena_de_mejor_a_peor(db, service, run_con_operaciones):
+    resultado = service.sweep_run(
+        db,
+        run_con_operaciones.id,
+        SweepGridIn(
+            take_profit_pcts=[1.0, 5.0, 9.0], stop_loss_pcts=[3.0], max_holds=[6]
+        ),
+    )
+
+    pnls = [p.net_pnl for p in resultado.points]
+    assert pnls == sorted(pnls, reverse=True)
+    assert resultado.points[0].is_baseline is False
+    assert resultado.elapsed_ms >= 0
+
+
+def test_el_barrido_de_un_run_en_curso_no_devuelve_400(db, service, scan_job):
+    run = crear(db, service, scan_job, strategy=BacktestStrategyIn(max_hold=6))
+
+    with pytest.raises(RunNotFinished):
+        service.sweep_run(
+            db,
+            run.id,
+            SweepGridIn(take_profit_pcts=[1.0], stop_loss_pcts=[1.0], max_holds=[6]),
+        )
+
+
+def test_el_barrido_admite_una_celda_sin_ningun_nivel(db, service, run_con_operaciones):
+    """Una celda con TP y SL a null es imposible, pero las otras once de la
+    rejilla son validas y el barrido no se cae por una."""
+    resultado = service.sweep_run(
+        db,
+        run_con_operaciones.id,
+        SweepGridIn(
+            take_profit_pcts=[2.0, None], stop_loss_pcts=[1.0, None], max_holds=[6]
+        ),
+    )
+
+    assert resultado.requested == 4
+    assert resultado.simulated == 3
+    assert all(
+        p.take_profit_pct is not None or p.stop_loss_pct is not None
+        for p in resultado.points
+    )
+
+
+def test_el_analisis_trae_la_poblacion_libre_agrupada_del_run(
+    db, service, run_con_operaciones
+):
+    """Los percentiles globales salen de la poblacion libre **agrupada**, que es
+    la unica que puede proponer niveles en un run donde ningun patron llega al
+    minimo de muestra por su cuenta. Sin estos dos campos en la respuesta, la
+    sugerencia global no tendria de donde venir y habria que recalcularla en el
+    frontend."""
+    operaciones, _, _ = service.get_run_trades(db, run_con_operaciones.id)
+    analisis = service.get_run_analysis(db, run_con_operaciones.id)
+
+    libres = [t for t in operaciones if t.exit_reason in ("timeout", "end_of_data")]
+    assert analisis.free_trades == len(libres)
+    assert analisis.pooled_mfe.count == len(libres)
+    assert analisis.pooled_mae.count == len(libres)
+    assert analisis.pooled_mfe.capped_at_pct is None, "el pool no lo recorta nadie"
+    assert sum(g.free_trades for g in analisis.groups) == len(libres)
+    if libres:
+        assert float(analisis.pooled_mfe.maximum) == pytest.approx(
+            max(float(t.mfe) * 100 for t in libres if t.mfe is not None), abs=0.01
+        )

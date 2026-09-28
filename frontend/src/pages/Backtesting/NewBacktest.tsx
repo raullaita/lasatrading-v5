@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 
 import { Loader2, Rocket } from "lucide-react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 
 import { createBacktest, getBacktestAvailableScans } from "../../services/backtestsApi";
 import { getPatternScan } from "../../services/patternsApi";
@@ -19,20 +19,38 @@ import { formatDateEs } from "../../utils/format";
  * `take_profit_pct` y `stop_loss_pct` se dejan vacios para no fijar objetivo:
  * el motor simula con el que exista. El backend rechaza una lista vacia en los
  * filtros (422), asi que "ninguno marcado" se manda como `null` = sin filtro.
+ *
+ * Acepta parametros por query string para que la tabla del barrido pueda
+ * "Probar" una combinacion: el escaneo, el TP, el SL y las velas maxima llegan
+ * puestos desde el run que se estaba calibrando, y el usuario solo tiene que
+ * darle a lanzar. Sin esto habria que volver a elegir el escaneo y teclear los
+ * numeros uno por uno, que es justo el trabajo que la calibracion evita.
  */
 export default function NewBacktest() {
   const navigate = useNavigate();
+  const [params] = useSearchParams();
+
+  /**
+   * Parametro de la URL como texto de campo. Un `null` explicito ("sin take
+   * profit") llega como la cadena vacia, y vacio en un campo numerico es
+   * justamente lo que el motor interpreta como "sin este nivel": los dos
+   * sentidos de la ausencia seddddan bien sin mirar nada mas.
+   */
+  const desdeUrl = (clave: string, porDefecto: string): string => {
+    const valor = params.get(clave);
+    return valor === null ? porDefecto : valor;
+  };
   const [scans, setScans] = useState<BacktestAvailableScan[]>([]);
   const [loadingScans, setLoadingScans] = useState(true);
   const [scansError, setScansError] = useState<string | null>(null);
 
-  const [scanId, setScanId] = useState("");
+  const [scanId, setScanId] = useState(params.get("scan_job_id") ?? "");
   const [scanPatternCodes, setScanPatternCodes] = useState<string[]>([]);
   const [scanLoading, setScanLoading] = useState(false);
 
-  const [tp, setTp] = useState("2.0");
-  const [sl, setSl] = useState("1.0");
-  const [maxHold, setMaxHold] = useState("24");
+  const [tp, setTp] = useState(desdeUrl("take_profit_pct", "2.0"));
+  const [sl, setSl] = useState(desdeUrl("stop_loss_pct", "1.0"));
+  const [maxHold, setMaxHold] = useState(desdeUrl("max_hold", "24"));
   const [feeBps, setFeeBps] = useState("4.0");
   const [capital, setCapital] = useState("1000");
   const [fraction, setFraction] = useState("1.0");

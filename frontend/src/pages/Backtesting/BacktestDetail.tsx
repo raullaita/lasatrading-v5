@@ -4,6 +4,7 @@ import { Ban, Loader2, Send, Trash2 } from "lucide-react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 
 import { BacktestLogViewer } from "../../components/Backtesting/BacktestLogViewer";
+import { CalibrationSection } from "../../components/Backtesting/CalibrationSection";
 import { EquityChart } from "../../components/Backtesting/EquityChart";
 import { SortableTh } from "../../components/ui/SortableTh";
 import { StatusBadge } from "../../components/ui/StatusBadge";
@@ -15,23 +16,29 @@ import {
   getBacktestSummary,
   getBacktestTrades,
   requeueBacktest,
+  getBacktestAnalysis,
+  sweepBacktest,
 } from "../../services/backtestsApi";
 import { getPatternScan } from "../../services/patternsApi";
 import { connectBacktestLogs, disconnectBacktestLogs } from "../../services/backtestsWebSocket";
 import {
   BACKTEST_TERMINAL_STATUSES,
   EXIT_REASON_LABELS,
+  type BacktestAnalysis,
   type BacktestEquitySeries,
   type BacktestLog,
   type BacktestRunResponse,
   type BacktestSummary,
   type BacktestTrade,
   type ExitReason,
+  type SweepGrid,
+  type SweepPoint,
   type TradeDirection,
 } from "../../types/backtesting";
 import {
   formatDateTimeEs,
   formatMoney,
+  formatPctPlain,
   formatPercent,
   formatRate,
   toNumber,
@@ -74,6 +81,10 @@ export default function BacktestDetail() {
   const [tradeExitReason, setTradeExitReason] = useState("");
   const [tradeSortBy, setTradeSortBy] = useState("entry_timestamp");
   const [tradeSortOrder, setTradeSortOrder] = useState<"asc" | "desc">("desc");
+  const [analysis, setAnalysis] = useState<BacktestAnalysis | null>(null);
+  const [sweep, setSweep] = useState<SweepPoint[]>([]);
+  const [sweeping, setSweeping] = useState(false);
+  const [sweepError, setSweepError] = useState<string | null>(null);
   const [wsConnected, setWsConnected] = useState(false);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -175,7 +186,52 @@ export default function BacktestDetail() {
         if (!disposedRef.current) setEquity(next);
       })
       .catch(() => undefined);
+    // El analisis va en la misma tanda por lo mismo: lee las mismas operaciones
+    // que el summary y solo tiene sentido con el run terminado. Si falla, la
+    // seccion se queda sin pintar y el resto de la pagina no se entera.
+    void getBacktestAnalysis(runId)
+      .then((next) => {
+        if (!disposedRef.current) setAnalysis(next);
+      })
+      .catch(() => undefined);
   }, [run, runId]);
+
+  const onSweep = useCallback(
+    async (grid: SweepGrid) => {
+      setSweeping(true);
+      setSweepError(null);
+      try {
+        const data = await sweepBacktest(runId, grid);
+        if (!disposedRef.current) setSweep(data.points);
+      } catch {
+        if (!disposedRef.current) {
+          setSweepError("No se pudo completar el barrido de parámetros.");
+        }
+      } finally {
+        if (!disposedRef.current) setSweeping(false);
+      }
+    },
+    [runId],
+  );
+
+  /**
+   * "Probar" no reescribe el run: crea uno nuevo con la combinacion elegida.
+   * Un barrido es una hipotesis y comprobarla es un run mas, con su propio
+   * registro y su propio historico. Sobrescribir el original dejaria al usuario
+   * sin la combinacion que queria conservar.
+   */
+  const onApplySweep = useCallback(
+    (point: SweepPoint) => {
+      const params = new URLSearchParams({
+        scan_job_id: run?.scan_job_id ?? "",
+        take_profit_pct: point.take_profit_pct ?? "",
+        stop_loss_pct: point.stop_loss_pct ?? "",
+        max_hold: String(point.max_hold),
+      });
+      navigate(`/backtesting/new?${params.toString()}`);
+    },
+    [navigate, run],
+  );
 
   const loadTrades = useCallback(async () => {
     if (!runId) return;
@@ -449,6 +505,17 @@ export default function BacktestDetail() {
             </p>
           )}
         </div>
+
+        {finished && analysis && (
+          <CalibrationSection
+            analysis={analysis}
+            onSweep={onSweep}
+            onApply={onApplySweep}
+            sweep={sweep}
+            sweeping={sweeping}
+            sweepError={sweepError}
+          />
+        )}
 
         {finished && summary && (
           <>
@@ -776,13 +843,6 @@ export default function BacktestDetail() {
 
 /** Precio sin simbolo y con separador español, hasta 2 decimales. */
 function formatPrice(value: string): string {
-  const n = toNumber(value);
-  if (n === null) return "—";
-  return n.toLocaleString("es-ES", { maximumFractionDigits: 2 });
-}
-
-/** Ratio numerico sin sufijo (profit factor, sharpe). */
-function formatPctPlain(value: string): string {
   const n = toNumber(value);
   if (n === null) return "—";
   return n.toLocaleString("es-ES", { maximumFractionDigits: 2 });
