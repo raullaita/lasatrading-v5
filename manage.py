@@ -15,12 +15,49 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 BACKEND = ROOT / "backend"
-from dotenv import load_dotenv
+VENV = BACKEND / ".venv"
+BOOTSTRAP_ENV = "LASATRADING_MANAGE_BOOTSTRAPPED"
+
+
+def venv_python() -> Path:
+    if os.name == "nt":
+        return VENV / "Scripts" / "python.exe"
+    return VENV / "bin" / "python"
+
+
+def _bootstrap_venv() -> None:
+    if os.environ.get(BOOTSTRAP_ENV) == "1":
+        return
+    target = venv_python()
+    if not target.exists():
+        return
+    try:
+        current = Path(sys.executable).resolve()
+        target = target.resolve()
+    except OSError:
+        return
+    if current == target:
+        return
+    env = dict(os.environ)
+    env[BOOTSTRAP_ENV] = "1"
+    try:
+        os.execve(str(target), [str(target), str(ROOT / "manage.py"), *sys.argv[1:]], env)
+    except OSError:
+        pass
+
+
+_bootstrap_venv()
+
+try:
+    from dotenv import load_dotenv
+except ImportError:
+    def load_dotenv(*args: object, **kwargs: object) -> None:
+        return None
+
 load_dotenv(BACKEND / ".env")
 FRONTEND = ROOT / "frontend"
 PID_DIR = ROOT / ".pids"
 LOG_DIR = ROOT / ".logs"
-VENV = BACKEND / ".venv"
 
 SERVICES = {
     "backend": {
@@ -127,12 +164,6 @@ def compose_cmd() -> list:
         "Docker Compose no está disponible. Instala docker-compose o usa el plugin de Docker Compose."
     )
     return []
-
-
-def venv_python() -> Path:
-    if os.name == "nt":
-        return VENV / "Scripts" / "python.exe"
-    return VENV / "bin" / "python"
 
 
 def check_tool(name: str) -> str:
