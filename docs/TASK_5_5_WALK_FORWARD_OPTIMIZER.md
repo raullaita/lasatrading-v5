@@ -73,9 +73,26 @@ desplazamiento de 90:
 - **In-sample**: se evalúa la rejilla completa y se elige la mejor por el
   criterio de la §4.1.
 - **Out-of-sample**: se aplica **solo** esa elección y se mide.
-- El **OOS de la ventana N nunca está en el IS de ninguna otra**. Es el invariante
-  anti-fuga y va con test: se comprueba que las marcas de tiempo del OOS son
-  disjuntas de todos los IS.
+- **El OOS de una ventana no está en el IS de esa misma ventana**, y la selección
+  de cada ventana usa **solo** su propio IS. Eso sí es comprobable, y va con
+  test: las señales de cada ventana se filtran por su intervalo, y el criterio
+  de la §4.1 no ve nada fuera de él.
+
+  > **Corrección.** Una versión anterior de esta spec decía "el OOS de la
+  > ventana N nunca está en el IS de ninguna otra", y es imposible de cumplir
+  > con solapamiento. Con ventanas de 365 días y desplazamiento de 90, el OOS de
+  > la ventana 1 es [365, 455) y el IS de la ventana 2 es [90, 455): el primero
+  > está **dentro** del segundo. Y es el setup normal, no un error.
+  >
+  > Lo que sí importa, y lo que no hay fuga en: el OOS de la ventana N no
+  > participa en la elección de la ventana N, ni en la de ninguna otra. Cada
+  > ventana elige con su IS y se evalúa con su OOS, y ninguna métrica de
+  > validación entra en ninguna decisión.
+  >
+  > Lo que sí tiene un coste, y no es fuga sino estadística: con solapamiento las
+  > ventanas OOS **no son independientes entre sí**, así que el número efectivo de
+  > ventanas es menor que el número de ventanas. Por eso el IC95% se calcula con
+  > bootstrap de bloques (§5.3) y no suponiendo observaciones independientes.
 
 Con `desplazamiento < tamaño_IS` las ventanas se solapan (más ventanas, menos
 independencia entre ellas); con `desplazamiento = tamaño_IS` son contiguas. El
@@ -216,11 +233,20 @@ reemplazo, 20.000 repeticiones, **paginado**. El tope de `page_size` en
 se quedó con las 200 primeras de un run de 440: el intervalo salió
 artificialmente estrecho y parecía mucho más concluyente de lo que era.
 
-La decisión de *dónde* hacer el bootstrap está tomada: el motor no tiene tabla,
-así que se calcula en el servicio sobre las operaciones que la simulación acaba
-de producir, y **no** sobre las persistidas de un backtest. El coste son 20.000
-pasadas sobre un millar de flotantes, y se hace una vez por candidato y no por
-ventana.
+Se calcula en el motor, sobre las operaciones que la simulación acaba de
+producir, y **no** sobre las persistidas de un backtest: el motor no tiene tabla.
+
+Es un **bootstrap de bloques**, no un remuestreo plano. Se remuestrea cada
+ventana por separado, se suman los resultados por ventana y se suman entre
+ventanas. Remuestear plano trataría cada operación como independiente de todas
+las demás, y con ventanas solapadas no lo son: dos operaciones de ventanas
+distintas pueden ser la misma señal vista desde dos ventanas, y contarlas dos
+como independientes acorta el intervalo por debajo de lo que corresponde. El
+bloque conserva la dependencia interna de la ventana y solo trata las ventanas
+como la unidad de intercambio.
+
+El coste son 20.000 pasadas por candidato, y se hace **una vez por candidato** y
+no por ventana.
 
 ## 6. Persistencia: el informe sí, las simulaciones no
 
@@ -355,7 +381,8 @@ explícito: el motor produce candidatos y lo que hay que poder hacer es
 ## 10. Criterios de aceptación
 
 Algoritmo:
-- [ ] El OOS de cada ventana es **disjunto** de todos los IS, con test.
+- [ ] El IS y el OOS de cada ventana son disjuntos, y la selección de cada
+      ventana usa solo señales de su propio IS, con test.
 - [ ] Las señales se asignan a la ventana por su marca de tiempo y el marco de
       velas se extiende `max_hold` barras para resolver la última operación.
 - [ ] El capital se reinicia en cada ventana.
@@ -392,7 +419,7 @@ Tests:
 | --- | --- |
 | Elegir pesos que favorezcan al candidato ganador | Pesos congelados en la spec, con el motivo escrito. Se revisan por juicio, no por resultado |
 | Un solo mercado como evidencia | Guard 5 de la §5.1: `sostenida` exige 3 regímenes; con menos, el techo es `prometedora` y la pantalla lo dice |
-| Las ventanas solapadas se cuentan como independientes | Se reporta el desplazamiento y el número de ventanas; el IC se calcula sobre operaciones, no sobre ventanas |
+| Las ventanas solapadas se cuentan como independientes | El IC95% se calcula con **bootstrap de bloques** por ventana, no suponiendo observaciones independientes. Se reporta también el desplazamiento y el número de ventanas |
 | Rejillas enormes | `max_simulations` con 422 antes de encolar, y contador en vivo en el formulario |
 | El tiempo de ejecución asusta al usuario | Coste estimado antes de lanzar y progreso por ventana, no por simulación |
 
@@ -440,3 +467,60 @@ pantallas.
    (`sin TP / SL 1,5% / 24 velas` gana en los tres). Si el motor no reproduce ese
    ranking con su criterio de Sharpe, el motor está mal y hay que arreglarlo
    antes de enseñarle nada a nadie.
+
+---
+
+## 15. Resultado del Paso 1 (cerrado)
+
+El motor puro está en `app/modules/backtesting/walk_forward.py`, con 56 tests
+propios y la suite completa en verde (333 tests).
+
+### Lo que la verificación real encontró
+
+1. **El ranking in-sample se reproduce entero.** Con la rejilla de 18
+   combinaciones, `sin TP / SL 1,5% / 24 velas` queda **primera de 18 en los tres
+   regímenes**, con el mismo margen que en la calibración manual. El motor mide
+   lo que dice medir.
+
+2. **Ganar in-sample no es ganar fuera de muestra, y hay un número.** Sobre el
+   rango bajista de 2022 la calibrada da **+49,7%** OOS frente al **+67,5%** de
+   la configuración original, que además opera el doble (123 frente a 246
+   operaciones). Sigue siendo positiva en los tres regímenes, pero no domina. Este
+   es exactamente el motivo de que el walk-forward exista, y está comprobado con
+   datos reales, no supuesto.
+
+3. **El ranking de candidatas no es comprobable con estos rangos, y no es culpa
+   del motor.** El número de candidatas está acotado por el número de ventanas,
+   porque solo puede ser candidata lo que fue elegido en el IS de alguna. Con
+   89-180 días y ventanas del 50/25 %, salen 2-3 ventanas y por tanto 2-3
+   candidatas de dieciocho: el ranking se queda sin contenido. Por eso el módulo
+   incorpora `evaluate_fixed` / `evaluate_fixed_report`, que miden **una
+   configuración dada** en el OOS de todas las ventanas sin elegir nada. Eso
+   permite comparar la misma configuración entre los tres regímenes aunque no
+   haya sido la elegida, que es lo que hace falta para validar.
+
+4. **La guarda de mercado tiene que poder desactivarse.** `beats_market_ratio = 0`
+   la desactiva. Sin esa posibilidad no se puede ver el ranking sin el filtro y,
+   por tanto, no se puede comprobar que la guarda esté cambiando algo. La
+   validación ahora es `[0, 1]`.
+
+### Detalles de implementación que se desviaron de la spec
+
+- **Ruta**: `analysis/walk_forward.py` es imposible: `analysis.py` y un paquete
+  `analysis/` no coexisten en Python. El módulo va a
+  `app/modules/backtesting/walk_forward.py`, junto a `analysis.py`.
+- **Formato de fixtures**: CSV comprimido, no Parquet. El venv no trae `pyarrow`,
+  y son ficheros locales que no se versionan.
+- **Nombres de parámetro**: se unificó todo a `iteraciones` y `minutos_por_vela`,
+  que es como ya se llamaba en `run_walk_forward`. Estaba mitad en inglés
+  (`iterations`) y mitad en español dentro del mismo módulo.
+- **Los fixtures no se versionan.** `scripts/export_regime_fixtures.py` los
+  exporta desde la base de desarrollo a `tests/fixtures/walk_forward/`, que está
+  en `.gitignore`. Si no están, los tests se **saltan**, no fallan: son datos de
+  mercado, no código, y la base de desarrollo no puede ser tocada por pytest
+  (`conftest.py` usa `lasa_test`).
+
+### Lo que queda para el Paso 2
+
+Modelos, migración, servicio, tarea Celery, router y frontend. Nada de eso está
+escrito todavía.

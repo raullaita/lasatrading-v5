@@ -38,3 +38,7 @@ Thumbs.db
 .idea/
 .vscode/
 *.swp
+# Datos de mercado exportados para los tests de walk-forward. No son codigo y
+# pesan; se regeneran con `python scripts/export_regime_fixtures.py` desde la
+# base de desarrollo, y los tests se saltan si no estan.
+backend/tests/fixtures/walk_forward/

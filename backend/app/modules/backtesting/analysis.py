@@ -750,6 +750,12 @@ class BuyAndHold:
     total_return_pct: float | None = None
     max_drawdown_pct: float | None = None
     sharpe_ratio: float | None = None
+    #: Curva de capital por vela. No va al JSON de la API: la sirve el
+    #: walk-forward para encadenar el mercado de varias ventanas en una sola
+    #: curva, y eso obliga a que ambos usen **la misma** regla de drawdown y de
+    #: Sharpe. Recalcularla aqui con otro metodo daria dos curvas que dicen lo
+    #: mismo con palabras distintas.
+    equity: pd.DataFrame | None = None
 
 
 def buy_and_hold(candles: pd.DataFrame, initial_capital: float = 1000.0) -> BuyAndHold:
@@ -787,6 +793,7 @@ def buy_and_hold(candles: pd.DataFrame, initial_capital: float = 1000.0) -> BuyA
         total_return_pct=(equity_final / initial_capital - 1) * 100,
         max_drawdown_pct=float(equity["drawdown_pct"].max()),
         sharpe_ratio=sharpe_ratio(equity),
+        equity=equity,
     )
 
 
