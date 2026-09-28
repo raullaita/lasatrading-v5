@@ -1,4 +1,32 @@
 Tarea 3.5: Galería de Indicadores Técnicos
+
+> **ABSORBIDA en la Tarea 3.5 — Data Explorer mejorado
+> (`TASK_3_5_DATA_EXPLORER.md`).**
+>
+> Este documento se conserva y no se borra: el razonamiento de por que hacia
+> falta una galeria sigue siendo valido, y la regla de la seccion 8 de
+> `PROJECT_GUIDELINES.md` es precisamente no perderlo.
+>
+> Motivo de la absorcion: un explorador que dibuja las velas con cualquier
+> indicador superpuesto **es** la galeria de indicadores, con dos diferencias que
+> la hacen mejor. Funciona sobre datos vivos en lugar de sobre un job
+> precalculado, y no obliga a crear un job para poder ver un grafico. Mantener
+> las dos pantallas seria mantener dos formas de hacer lo mismo.
+>
+> De este documento, estos criterios de aceptacion pasan al explorador:
+> - Grid de tarjetas de los indicadores disponibles.
+> - Vista de detalle con descripcion, parametros y grafico de ejemplo.
+> - Crear un job de calculo desde la galeria ("Usar este indicador").
+>
+> Y estos se descartan, con motivo:
+> - El "playground" de parametros sobre el grafico de ejemplo. Se solapa con el
+>   hecho de que los parametros de un job se pueden cambiar y volver a ejecutar;
+>   mantener dos caminos para cambiar un parametro es una decision, no una
+>   comodidad.
+> - Fórmulas matematicas y senales tipicas de trading. Son documentacion de un
+>   manual de indicadores, no del sistema, y este sistema solo calcula cuatro
+>   indicadores. Se documenta en el README de Features cuando toque.
+
 Objetivo
 Crear una página de galería que muestre los indicadores técnicos disponibles en el sistema, con descripciones claras, fórmulas matemáticas, señales de trading típicas y gráficos de ejemplo generados con datos reales importados. Esta galería servirá como referencia educativa para el usuario y como catálogo visual de las capacidades del módulo de Features.
 Criterios de Aceptación
