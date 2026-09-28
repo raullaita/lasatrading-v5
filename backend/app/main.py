@@ -3,6 +3,10 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import get_settings
+from app.modules.backtesting import (
+    models as _backtesting_models,  # noqa: F401  # metadata Alembic
+)
+from app.modules.backtesting.router import router as backtesting_router
 from app.modules.data.router import router as data_router
 from app.modules.data_import import (
     models as _data_import_models,  # noqa: F401  # metadata Alembic
@@ -43,6 +47,7 @@ app.include_router(data_import_router)
 app.include_router(data_router)
 app.include_router(features_router)
 app.include_router(patterns_router)
+app.include_router(backtesting_router)
 
 
 @app.get("/health")

@@ -12,6 +12,7 @@ celery_app = Celery(
         "app.modules.data_import.tasks",
         "app.modules.features.tasks",
         "app.modules.patterns.tasks",
+        "app.modules.backtesting.tasks",
     ],
 )
 

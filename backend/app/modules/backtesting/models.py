@@ -100,7 +100,13 @@ class BacktestRun(Base):
     #: precio de usar una sola posicion a la vez, y se exponen para que el
     #: resultado se pueda interpretar sin suponerlo.
     skipped_signals: Mapped[int] = mapped_column(Integer, default=0)
-    #: Operaciones que no pudieron cerrarse por falta de velas posteriores.
+    #: Senales que caen en las ultimas velas, sin ninguna posterior donde
+    #: entrar. **No** son operaciones cortadas: no llega a haber ninguna. El
+    #: nombre viene de que la senal queda truncada por el borde de los datos.
+    #: Las operaciones que si se abrieron pero no pudieron cerrarse por falta de
+    #: velas son las de ``exit_reason = 'end_of_data'``, que se consultan sobre
+    #: ``backtest_trades`` y no se guardan aqui porque dependen de cada operacion
+    #: y no del run entero.
     truncated_trades: Mapped[int] = mapped_column(Integer, default=0)
 
     net_pnl: Mapped[float | None] = mapped_column(Numeric(20, 8), nullable=True)
