@@ -32,6 +32,10 @@ const PatternList = lazy(() => import("./pages/Patterns/PatternList"));
 const NewPatternScan = lazy(() => import("./pages/Patterns/NewPatternScan"));
 const Occurrences = lazy(() => import("./pages/Patterns/Occurrences"));
 const ScanDetail = lazy(() => import("./pages/Patterns/ScanDetail"));
+// Backtesting: mismas razones que patrones, con el detalle como la hoja pesada.
+const BacktestList = lazy(() => import("./pages/Backtesting/BacktestList"));
+const NewBacktest = lazy(() => import("./pages/Backtesting/NewBacktest"));
+const BacktestDetail = lazy(() => import("./pages/Backtesting/BacktestDetail"));
 
 /**
  * Placeholder de carga de las rutas diferidas.
@@ -192,7 +196,14 @@ export default function App() {
           <Route path="/patterns/new" element={<NewPatternScan />} />
           <Route path="/patterns/occurrences" element={<Occurrences />} />
           <Route path="/patterns/scans/:jobId" element={<ScanDetail />} />
-          <Route path="/backtesting" element={<ModulePlaceholder module="Backtesting" />} />
+          {/*
+          Rutas de backtesting. `new` es literal y va ANTES que `runs/:runId`:
+          el mismo criterio de orden que /patterns, para que un futuro
+          `/backtesting/:algo` colisione a la vista.
+        */}
+          <Route path="/backtesting" element={<BacktestList />} />
+          <Route path="/backtesting/new" element={<NewBacktest />} />
+          <Route path="/backtesting/runs/:runId" element={<BacktestDetail />} />
           <Route path="/alerts" element={<ModulePlaceholder module="Alertas" />} />
           <Route
             path="*"

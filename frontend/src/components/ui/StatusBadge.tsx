@@ -1,6 +1,7 @@
 import type { ImportStatus } from "../../types/dataImport";
 import type { FeatureJobStatus } from "../../types/features";
 import type { PatternScanJobStatus } from "../../types/patterns";
+import type { BacktestRunStatus } from "../../types/backtesting";
 
 /**
  * Badge de estado compartido por los módulos que llevan un job con estados.
@@ -10,12 +11,13 @@ import type { PatternScanJobStatus } from "../../types/patterns";
  * que anotaba `Record`. Un solo componente evita que un estado nuevo se
  * pinte en dos de los tres sitios y no en el tercero.
  *
- * Los tres módulos declaran hoy el mismo union de cinco estados. Si alguno
- * divergiera, este `Record` dejaría de cubrir el tipo y el error sale aquí,
- * que es justo lo que se busca: que la duplicación salga a la luz en el
- * momento de romperla y no tres meses después en un badge mal pintado.
+ * Los tres módulos declaran hoy el mismo union de cinco estados, y los
+ * backtests (`BacktestRunStatus`) usan exactamente los mismos cinco literales.
+ * Si alguno divergiera, este `Record` dejaría de cubrir el tipo y el error
+ * sale aquí, que es justo lo que se busca: que la duplicación salga a la luz
+ * en el momento de romperla y no tres meses después en un badge mal pintado.
  */
-export type JobStatus = FeatureJobStatus | ImportStatus | PatternScanJobStatus;
+export type JobStatus = FeatureJobStatus | ImportStatus | PatternScanJobStatus | BacktestRunStatus;
 
 const styles: Record<JobStatus, string> = {
   pending: "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300",
