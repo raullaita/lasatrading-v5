@@ -21,6 +21,7 @@ Bloques, en orden de importancia:
 
 from __future__ import annotations
 
+import contextlib
 import math
 from pathlib import Path
 
@@ -32,6 +33,7 @@ from app.modules.backtesting.engine import StrategyConfig
 from app.modules.backtesting.walk_forward import (
     SCORE_WEIGHTS,
     StrategyKey,
+    WalkForwardCancelled,
     WalkForwardError,
     Window,
     WindowMetrics,
@@ -904,10 +906,16 @@ def test_el_motor_produce_candidatos_en_los_tres_regimenes(etiqueta):
     assert informe.windows, "el regimen debe dar al menos una ventana"
     assert informe.candidates
     assert not informe.oos_equity.empty
-    assert informe.oos_equity.index.is_monotonic_increasing, (
-        "la curva encadenada no puede tener timestamps repetidos: la cola de "
-        "max_hold se recorta antes de encadenar"
+    # **Estrictamente** creciente, no ``is_monotonic_increasing``: con ventanas
+    # contiguas la vela de frontera es la ultima de una y la primera de la
+    # siguiente, y un indice con repetidos hace que el drawdown acumulado cuente
+    # esa fila dos veces. El check laxo pasaba y por eso el bug llego hasta la
+    # persistencia, donde reventaba con ``UniqueViolation``.
+    assert informe.oos_equity.index.is_unique, (
+        "la curva encadenada tiene timestamps repetidos: la vela de frontera "
+        "pertenece a dos ventanas y hay que descartar una"
     )
+    assert informe.oos_equity.index.is_monotonic_increasing
     veredictos = {"descartada", "prometedora", "sostenida"}
     assert all(c.verdict in veredictos for c in informe.candidates)
     assert all(c.windows >= 1 for c in informe.candidates)
@@ -1156,3 +1164,145 @@ def test_el_walk_forward_es_determinista():
     assert [c.verdict for c in primero.candidates] == [
         c.verdict for c in segundo.candidates
     ]
+
+
+# ---------------------------------------------------------------------------
+# Cancelacion
+# ---------------------------------------------------------------------------
+def test_cancelar_detiene_el_motor_entre_ventanas():
+    """``on_progress`` que devuelve ``False`` detiene el motor.
+
+    Es la garantia que hace falta para que el boton de cancelar del informe tenga
+    algo que hacer, y no se podia comprobar antes de que el motor aprendiera a mirar
+    el valor de retorno del callback.
+    """
+    marco = velas(24 * 120)
+    senales = señales(marco)
+    visits: list[int] = []
+
+    def on_progress(hechas: int, total: int, etiqueta: str) -> bool:
+        visits.append(hechas)
+        return hechas < 3
+
+    with pytest.raises(WalkForwardCancelled) as exc:
+        run_walk_forward(
+            marco,
+            senales,
+            StrategyConfig(take_profit_pct=2.0, stop_loss_pct=1.0, max_hold=12),
+            REJILLA,
+            spec(window_days=30, oos_days=15, step_days=15, min_windows=1),
+            on_progress=on_progress,
+        )
+
+    assert max(visits) == 3, "el motor debe parar en la tercera ventana, no seguir"
+    assert "3" in str(exc.value)
+
+
+def test_cancelar_devuelve_informe_completo_o_nada():
+    """Un motor que devuelve un informe parcial es peor que uno que no devuelve nada.
+
+    Se comprueba que al cancelar **no** sale un ``WalkForwardReport`` con menos
+    ventanas: sale una excepcion. Si algumun dia el motor empieza a devolver
+    informes parciales en vez de fallar, este test se rompe y avisa.
+    """
+    marco = velas(24 * 120)
+    senales = señales(marco)
+    con_cancelacion = False
+
+    def on_progress(hechas: int, total: int, etiqueta: str) -> bool:
+        nonlocal con_cancelacion
+        if hechas >= 2:
+            con_cancelacion = True
+            return False
+        return True
+
+    resultado = None
+    with contextlib.suppress(WalkForwardCancelled):
+        resultado = run_walk_forward(
+            marco,
+            senales,
+            StrategyConfig(take_profit_pct=2.0, stop_loss_pct=1.0, max_hold=12),
+            REJILLA,
+            spec(window_days=30, oos_days=15, step_days=15, min_windows=1),
+            on_progress=on_progress,
+        )
+
+    assert con_cancelacion, "el test no llego a cancelar; el rango no dio ventanas"
+    assert resultado is None, (
+        "cancelar tiene que levantar excepcion, no devolver un informe a medias"
+    )
+
+
+def test_sin_callback_el_motor_no_se_enter():
+    """Un motor sin ``on_progress`` se comporta igual que antes.
+
+    El parametro es opcional y anadirlo no puede haber roto el camino por defecto.
+    """
+    marco = velas(24 * 120)
+    senales = señales(marco)
+    informe = run_walk_forward(
+        marco,
+        senales,
+        StrategyConfig(take_profit_pct=2.0, stop_loss_pct=1.0, max_hold=12),
+        REJILLA,
+        spec(window_days=30, oos_days=15, step_days=15, min_windows=1),
+    )
+    assert len(informe.windows) >= 2
+
+
+def test_cancelar_es_distinto_de_fallar():
+    """``WalkForwardCancelled`` hereda de ``WalkForwardError``, y por eso el
+    llamante que no la conoce sigue atrapando el error que ya conocia."""
+    assert issubclass(WalkForwardCancelled, WalkForwardError)
+
+
+def test_la_vela_de_frontera_no_se_encadena_dos_veces():
+    """Con ventanas contiguas, la vela que cierra una abre la siguiente.
+
+    Es el caso que mas se da (step_days igual a window + oos) y el que hacia que
+    la curva tuviera dos filas con el mismo timestamp. El coste no es solo estetico:
+    el drawdown acumulado cuenta esa fila dos veces, y al persistir con clave
+    ``(run_id, timestamp)`` es un ``UniqueViolation`` que tumba el run entero.
+    """
+    marco = velas(24 * 120)
+    senales = señales(marco)
+    informe = run_walk_forward(
+        marco,
+        senales,
+        StrategyConfig(take_profit_pct=2.0, stop_loss_pct=1.0, max_hold=12),
+        REJILLA,
+        spec(window_days=30, oos_days=15, step_days=15, min_windows=1),
+    )
+    indice = informe.oos_equity.index
+
+    assert len(indice) > 1
+    assert indice.is_unique, "la curva encadenada no puede repetir timestamp"
+    assert indice.is_monotonic_increasing
+    assert list(indice).count(indice[0]) == 1
+
+
+def test_la_curva_se_inventa_una_ventana_de_un_tramo_de_la_otra():
+    """Lo que no se debe hacer al descartar la fila duplicada: recortar la
+    ventana. Si al quitar la frontera se perdia una vela, la curva estaria
+    resumiendo y el retorno OOS no cuadraria con el de las ventanas."""
+    marco = velas(24 * 120)
+    senales = señales(marco)
+    informe = run_walk_forward(
+        marco,
+        senales,
+        StrategyConfig(take_profit_pct=2.0, stop_loss_pct=1.0, max_hold=12),
+        REJILLA,
+        spec(window_days=30, oos_days=15, step_days=15, min_windows=1),
+    )
+    curva = informe.oos_equity
+    # Las ventanas contiguas cubren el rango una vez; solo se pierde una fila por
+    # frontera, no un tramo entero.
+    inicio_esperado = marco.index[0]
+    fin_esperado = informe.windows[-1].window.oos_to
+    assert curva.index[0] >= inicio_esperado
+    assert curva.index[-1] <= fin_esperado
+
+    huecos = np.diff(curva.index).astype("timedelta64[h]").astype(int)
+    assert (huecos == 1).all(), (
+        f"hay saltos en la curva: {sorted(set(huecos))} horas entre puntos seguidos"
+    )

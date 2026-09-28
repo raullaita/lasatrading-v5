@@ -37,7 +37,7 @@ from datetime import datetime, timezone
 from decimal import Decimal
 
 import pandas as pd
-from sqlalchemy import Integer, Text, cast, delete, func, select
+from sqlalchemy import Integer, delete, func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -83,6 +83,7 @@ from app.modules.backtesting.schemas import (
     SweepPointOut,
 )
 from app.modules.data.candles import load_candles
+from app.modules.data.signals import direction_column, load_signals
 from app.modules.patterns.models import (
     PatternOccurrence,
     PatternScanJob,
@@ -145,30 +146,6 @@ class RunNotFinished(Exception):
 
 class ScanNotReady(Exception):
     """El escaneo de origen no admite una simulacion todavia."""
-
-
-def _direction_column() -> Text:
-    """La columna JSONB de direccion de ``pattern_occurrences``, como texto.
-
-    Dos trampas, las dos ya pisadas al escribir esto:
-
-    1. Va por ``__table__`` (Core) y **no** por la clase ORM a proposito: la
-       clase declarativa expone esa columna como ``details``, porque
-       ``metadata`` esta reservado en SQLAlchemy, asi que
-       ``PatternOccurrence.metadata`` resuelve al ``MetaData`` de la clase y
-       subscriptarlo revienta con ``'MetaData' object is not subscriptable``. Es
-       el mismo motivo por el que ``PatternScanService._save_occurrences``
-       inserta contra ``__table__``.
-
-    2. Se usa ``jsonb_extract_path_text`` (``->>``) y no un ``cast`` sobre
-       ``c.metadata["direction"]``. En Core ese subscripto genera ``->``, y
-       castear a texto el resultado de ``->`` deja el valor **tal cual lo
-       serializa JSON**, es decir ``'"bullish"'`` con las comillas dentro. Al
-       compararlo contra ``"bullish"`` no cuadra y el motor acaba viendo
-       direcciones que no reconoce. ``->>`` devuelve el texto sin comillas.
-    """
-    columna = PatternOccurrence.__table__.c.metadata
-    return cast(func.jsonb_extract_path_text(columna, "direction"), Text)
 
 
 @dataclass(frozen=True, slots=True)
@@ -436,37 +413,22 @@ class BacktestService:
     ) -> pd.DataFrame:
         """Señales del escaneo de origen, en el formato que espera el motor.
 
-        La direccion vive dentro del JSONB ``metadata``, asi que se extrae con
-        un cast a texto. El filtro se aplica **en SQL** y no despues: la vista de
-        detalle filtra por patron, y traer 2.812 filas para descartar 1.700 en
-        Python seria tirar la mayor parte del trabajo de la base de datos.
+        La consulta vive en ``data.signals.load_signals`` y no aqui porque el
+        servicio de walk-forward necesita **la misma**, con el mismo filtro y el
+        mismo cuidado con la columna de direccion del JSONB. Con dos copias, la
+        primera vez que cambie el formato del ``metadata`` habrá un módulo que
+        funciona y otro que no, y el que no funciona devolverá direcciones vacías
+        sin avisar.
         """
         run = db.get(BacktestRun, run_id)
         if run is None:
             raise RunNotFound("El run no existe")
-
-        direction_col = _direction_column()
-        stmt = select(
-            PatternOccurrence.timestamp,
-            PatternOccurrence.pattern_name,
-            direction_col.label("direction"),
-        ).where(PatternOccurrence.scan_job_id == run.scan_job_id)
-        if filters.patterns:
-            stmt = stmt.where(PatternOccurrence.pattern_name.in_(filters.patterns))
-        if filters.directions:
-            stmt = stmt.where(direction_col.in_(filters.directions))
-        stmt = stmt.order_by(PatternOccurrence.timestamp)
-
-        rows = db.execute(stmt).mappings().all()
-        frame = pd.DataFrame(rows, columns=["timestamp", "pattern_name", "direction"])
-        if frame.empty:
-            return frame
-        # ``pd.to_datetime(..., utc=True)`` y no ``pd.DatetimeIndex(...).dt``: el
-        # accesor ``.dt`` es de ``Series``, ``DatetimeIndex`` no lo tiene. El
-        # ``utc=True`` ademas normaliza a UTC lo que venga sin zona horaria, en
-        # vez de asumir que ya es UTC.
-        frame["timestamp"] = pd.to_datetime(frame["timestamp"], utc=True)
-        return frame.sort_values("timestamp", kind="stable").reset_index(drop=True)
+        return load_signals(
+            db,
+            run.scan_job_id,
+            patterns=filters.patterns,
+            directions=filters.directions,
+        )
 
     def _save_trades(self, run_id: uuid.UUID, trades: Sequence[TradeResult]) -> int:
         if not trades:
@@ -723,7 +685,7 @@ class BacktestService:
         la tarjeta diria "2.812 señales, 40 operaciones" sin explicar que 1.700
         señales ni siquiera se consideraron.
         """
-        direction_col = _direction_column()
+        direction_col = direction_column()
         stmt = (
             select(func.count())
             .select_from(PatternOccurrence)

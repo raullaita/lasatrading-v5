@@ -19,7 +19,13 @@ from pydantic import BaseModel, Field, model_validator
 
 from app.modules.backtesting.analysis import MAX_SWEEP_COMBINATIONS
 from app.modules.backtesting.engine import StrategyConfig, StrategyError
-from app.modules.backtesting.models import BacktestRunStatus, ExitReason, TradeDirection
+from app.modules.backtesting.models import (
+    BacktestRunStatus,
+    ExitReason,
+    TradeDirection,
+    WalkForwardRunStatus,
+    WalkForwardVerdict,
+)
 
 
 class BacktestStrategyIn(BaseModel):
@@ -436,3 +442,275 @@ class BacktestSweepOut(BaseModel):
     requested: int
     simulated: int
     elapsed_ms: int
+
+
+# ---------------------------------------------------------------------------
+# Walk-forward
+# ---------------------------------------------------------------------------
+#: Tope duro de combinaciones de la rejilla. Mismo numero y mismo motivo que
+#: ``MAX_SWEEP_COMBINATIONS``, y se comparte a proposito: el walk-forward barre la
+#: rejilla una vez **por ventana**, asi que un tope que aqui fuera mas alto
+#: multiplicaria el coste de barrido por el numero de ventanas sin avisar. El
+#: limite real de simulaciones se comprueba aparte, con ``max_simulations``.
+MAX_WALK_FORWARD_COMBINATIONS = MAX_SWEEP_COMBINATIONS
+
+
+class WalkForwardCreateIn(BaseModel):
+    """Peticion de ``POST /api/v1/walk-forward/runs``.
+
+    El rango de mercado tampoco se pide: se hereda del escaneo, por el mismo
+    motivo que en ``BacktestCreateIn``.
+
+    ``max_simulations`` se comprueba **aqui** y no en el worker, y la comprobacion
+    es dinamica: el numero de ventanas depende del rango del escaneo, que el
+    cliente no conoce, asi que el 422 no puede salir de un ``Field`` estatico.
+    Lo que si se puede comprobar sin el rango es que la rejilla no se pase de
+    ``MAX_WALK_FORWARD_COMBINATIONS`` combinaciones, y eso si se hace como
+    ``Field``. El total real lo verifica el servicio, que ya tiene las velas
+    cargadas y por tanto las ventanas construidas.
+    """
+
+    scan_job_id: UUID
+    grid: SweepGridIn
+
+    #: Ventanas de in-sample y out-of-sample, en dias. ``oos_days`` no tiene
+    #: cota superior a proposito: un OOS largo es caro pero no invalido, y es al
+    #: usuario a quien le corresponde decidir cuanto sacrifica.
+    window_days: int = Field(default=365, ge=7)
+    oos_days: int = Field(default=90, ge=7)
+    step_days: int = Field(default=90, ge=1)
+    #: Ventanas OOS minimas para que una combinacion pueda ser candidata.
+    min_windows: int = Field(default=3, ge=1)
+    #: Operaciones OOS minimas. Es la guarda que mas descarta, y por eso el
+    #: IC95% de una candidata descartada por aqui es ``null``: no se puede
+    #: repetir la medicion con la muestra que no hay.
+    min_trades: int = Field(default=30, ge=0)
+    #: Tramo final reservado que no se toca. Cero significa que no hay
+    #: reserva, que es el valor por defecto.
+    holdout_days: int = Field(default=0, ge=0)
+    #: Fraccion de ventanas OOS en las que hay que superar al mercado. Cero la
+    #: desactiva, y por eso el rango es [0, 1] y no (0, 1].
+    beats_market_ratio: float = Field(default=0.6, ge=0, le=1)
+    #: Regimenes declarados por el usuario. Es una **declaracion**, no una
+    #: deteccion: el motor no sabe si los datos que le dan son un lateral, un
+    #: bajista o tres cosas pegadas, y fingir que lo sabe seria inventarse el
+    #: requisito de tres regimenes de la §5.1. Lo usa para decidir si ``sostenida``
+    #: es siquiera alcanzable.
+    regimes_declared: int = Field(default=1, ge=1, le=12)
+    #: Tope duro de simulaciones, comprobado contra el total real. Es el unico
+    #: sitio donde un 422 puede decir cuantas serian, porque es el unico sitio
+    #: que ya ha construido las ventanas.
+    max_simulations: int = Field(default=2000, ge=1)
+
+    @model_validator(mode="after")
+    def _validate_windows(self) -> WalkForwardCreateIn:
+        if self.step_days > self.window_days + self.oos_days:
+            raise ValueError(
+                "step_days no puede ser mayor que la ventana completa: no llegaria "
+                "a haber una segunda ventana"
+            )
+        if self.holdout_days and self.holdout_days < self.oos_days:
+            raise ValueError(
+                "holdout_days debe ser al menos oos_days: si el tramo reservado es "
+                "mas corto que una ventana, no es una reserva"
+            )
+        # El tope de combinaciones se comprueba con el mismo criterio que el
+        # motor usa para no barrenar combinaciones invalidas (los dos niveles a
+        # null, que es una combinacion que no se puede simular).
+        validas = len(
+            [
+                (tp, sl)
+                for tp in self.grid.take_profit_pcts
+                for sl in self.grid.stop_loss_pcts
+                if tp is not None or sl is not None
+            ]
+        ) * len(self.grid.max_holds)
+        if validas > MAX_WALK_FORWARD_COMBINATIONS:
+            raise ValueError(
+                f"La rejilla tiene {validas} combinaciones y el tope es "
+                f"{MAX_WALK_FORWARD_COMBINATIONS}: reduce los valores de TP, SL o "
+                "max_hold"
+            )
+        if validas == 0:
+            raise ValueError(
+                "La rejilla no tiene ninguna combinación simulable: todos los pares "
+                "de TP y SL son null"
+            )
+        return self
+
+
+class WalkForwardRunOut(BaseModel):
+    """Cabecera del run, tal y como se guarda.
+
+    No incluye ventanas ni candidatas: para eso esta ``WalkForwardReportOut``.
+    Mezclarlas en un solo esquema obligaria a la lista de runs a traer el
+    informe entero, y la lista no lo necesita.
+    """
+
+    model_config = {"from_attributes": True}
+
+    id: UUID
+    scan_job_id: UUID
+    status: WalkForwardRunStatus
+    config: dict
+    grid: dict
+    initial_capital: Decimal
+    simulations: int
+    windows: int
+    windows_without_selection: int
+    equity_final: Decimal | None = None
+    oos_return_pct: Decimal | None = None
+    market_return_pct: Decimal | None = None
+    max_drawdown_pct: Decimal | None = None
+    elapsed_ms: int | None = None
+    started_at: datetime | None = None
+    finished_at: datetime | None = None
+    error_message: str | None = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class WalkForwardStrategyOut(BaseModel):
+    """Una combinacion de la rejilla, con ``None`` donde no hay nivel.
+
+    Se declara en vez de reusar ``StrategyKey``, que vive en el motor puro y no
+    depende de pydantic: los schemas son el contrato de la API y el motor es una
+    funcion sin dependencias. Que coincidan ahora es una cuestion de revisin, no
+    una garantia del compilador, asi que el contrato se declara aqui.
+    """
+
+    take_profit_pct: Decimal | None = None
+    stop_loss_pct: Decimal | None = None
+    max_hold: int
+
+    @property
+    def label(self) -> str:
+        tp = (
+            "sin TP" if self.take_profit_pct is None else f"TP {self.take_profit_pct:g}"
+        )
+        sl = "sin SL" if self.stop_loss_pct is None else f"SL {self.stop_loss_pct:g}"
+        return f"{tp} / {sl} / {self.max_hold}v"
+
+
+class WalkForwardWindowOut(BaseModel):
+    """Una ventana: que se eligio en el IS y que rindio en el OOS."""
+
+    model_config = {"from_attributes": True}
+
+    index: int
+    is_from: datetime
+    is_to: datetime
+    oos_from: datetime
+    oos_to: datetime
+    selected_strategy: dict
+    is_sharpe: Decimal | None = None
+    oos_trades: int
+    oos_evaluated: int
+    oos_return_pct: Decimal
+    oos_net_pnl: Decimal
+    oos_equity_final: Decimal
+    oos_win_rate: Decimal | None = None
+    oos_sharpe: Decimal | None = None
+    oos_max_drawdown_pct: Decimal
+    market_return_pct: Decimal
+    market_max_drawdown_pct: Decimal
+    exits: dict = Field(default_factory=dict)
+
+    #: Diferencia contra el mercado en esa ventana. Se calcula al servir y no se
+    #: guarda: es una resta de dos columnas que ya estan, y duplicarla seria una
+    #: tercera fuente de verdad para el mismo numero.
+    @property
+    def edge_pct(self) -> Decimal | None:
+        return self.oos_return_pct - self.market_return_pct
+
+
+class WalkForwardCandidateOut(BaseModel):
+    """Un candidato con su veredicto. Incluye **los descartados**.
+
+    ``ci95`` es ``None`` para una candidata descartada por no llegar al minimo
+    de operaciones: un intervalo de confianza de una muestra que no existe
+    invites a creerselo.
+    """
+
+    model_config = {"from_attributes": True}
+
+    rank: int
+    take_profit_pct: Decimal | None = None
+    stop_loss_pct: Decimal | None = None
+    max_hold: int
+    windows: int
+    trades: int
+    oos_return_pct: Decimal
+    market_return_pct: Decimal
+    win_rate_mean: Decimal
+    sharpe_mean: Decimal
+    sharpe_dispersion: Decimal
+    max_drawdown_worst: Decimal
+    consistency: Decimal
+    beats_market_windows: int
+    profitable_windows: int
+    score: Decimal
+    verdict: WalkForwardVerdict
+    ci95_low: Decimal | None = None
+    ci95_high: Decimal | None = None
+    rejections: list = Field(default_factory=list)
+    notes: list = Field(default_factory=list)
+
+    @property
+    def strategy(self) -> WalkForwardStrategyOut:
+        return WalkForwardStrategyOut(
+            take_profit_pct=self.take_profit_pct,
+            stop_loss_pct=self.stop_loss_pct,
+            max_hold=self.max_hold,
+        )
+
+
+class WalkForwardReportOut(BaseModel):
+    """El informe completo: cabecera, ventanas y candidatos."""
+
+    run: WalkForwardRunOut
+    windows: list[WalkForwardWindowOut] = Field(default_factory=list)
+    candidates: list[WalkForwardCandidateOut] = Field(default_factory=list)
+
+
+class WalkForwardEquityPointOut(BaseModel):
+    model_config = {"from_attributes": True}
+
+    timestamp: datetime
+    equity: Decimal
+    market_equity: Decimal
+    drawdown_pct: Decimal
+    #: Que ventana estaba abierta en esta vela, para poder contrastar cada tramo
+    #: del grafico con la tabla de ventanas.
+    window_index: int
+
+
+class WalkForwardEquitySeriesOut(BaseModel):
+    """Curva OOS encadenada y benchmark encadenado, submuestreada si es larga.
+
+    Mismo contrato que ``BacktestEquitySeriesOut``: ``total_points`` es el numero
+    real de velas y ``returned`` el de la serie enviada, para que el frontend
+    pueda decir que esta enseñando una version reducida en vez de fingir que son
+    todas.
+    """
+
+    points: list[WalkForwardEquityPointOut]
+    total_points: int
+    returned: int
+    max_drawdown_pct: Decimal | None = None
+
+
+class WalkForwardLogOut(BaseModel):
+    model_config = {"from_attributes": True}
+
+    id: UUID
+    run_id: UUID
+    timestamp: datetime
+    level: str
+    message: str
+    progress: int | None = None
+
+
+class WalkForwardRunListOut(BaseModel):
+    runs: list[WalkForwardRunOut]
+    total: int

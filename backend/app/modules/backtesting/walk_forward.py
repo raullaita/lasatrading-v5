@@ -95,6 +95,21 @@ class WalkForwardError(ValueError):
     """Una configuracion de ventanas que no se puede construir."""
 
 
+class WalkForwardCancelled(WalkForwardError):
+    """El motor se detuvo porque quien lo lanzo pidio cancelar.
+
+    Existe como excepcion y no como retorno porque el motor es una funcion pura:
+    "cancelado" no es un resultado, es la ausencia de resultado. Si el motor
+    devolviera un informe parcial, el servicio no tendria forma de distinguirlo
+    de un informe completo con pocas ventanas, y un informe parcial con
+    veredictos es exactamente el objeto que no se debe poder leer.
+
+    Hereda de ``WalkForwardError`` a proposito: quien llama al motor y no conoce
+    esta clase sigue atrapando el error que ya conocia, y el que la conoce la
+    distingue porque cancelar no es fallar.
+    """
+
+
 # ---------------------------------------------------------------------------
 # Ventanas
 # ---------------------------------------------------------------------------
@@ -811,15 +826,28 @@ def _chain_equity(
     """
     partes: list[pd.Series] = []
     actual = capital
+    ultimo_ts: pd.Timestamp | None = None
     for curva in curvas:
         if curva is None or curva.empty:
             continue
         serie = curva["equity"].astype(float)
+        # Con ventanas contiguas la vela de frontera es la ultima de una y la
+        # primera de la siguiente. Encadenar las dos duplica ese timestamp, y un
+        # indice con repetidos rompe dos cosas a la vez: el drawdown acumulado
+        # cuenta esa fila dos veces, y la persistencia con clave
+        # ``(run_id, timestamp)`` revienta con un ``UniqueViolation``. Se
+        # conserva la fila **anterior**, que es la que ya encadena el capital
+        # anterior, y se descarta la de la ventana nueva.
+        if ultimo_ts is not None and serie.index[0] <= ultimo_ts:
+            serie = serie[serie.index > ultimo_ts]
+            if serie.empty:
+                continue
         base = float(serie.iloc[0])
         if base <= 0:
             continue
         factor = actual / base
         partes.append(serie * factor)
+        ultimo_ts = curva.index[-1]
         actual = float(serie.iloc[-1]) * factor
     if not partes:
         return pd.DataFrame(
@@ -840,7 +868,7 @@ def run_walk_forward(
     grid: SweepGrid,
     spec: WindowSpec,
     minutos_por_vela: int | None = None,
-    on_progress: Callable[[int, int, str], None] | None = None,
+    on_progress: Callable[[int, int, str], bool | None] | None = None,
     iteraciones: int = BOOTSTRAP_ITERATIONS,
     seed: int = BOOTSTRAP_SEED,
 ) -> WalkForwardReport:
@@ -853,6 +881,10 @@ def run_walk_forward(
     reporta por **ventana**, no por simulacion: una simulacion dura 60 ms y no
     produce ningun dato que contar, asi que una barra que sube 1.200 veces en un
     minuto informa de lo mismo que una que sube 10.
+
+    Si devuelve ``False``, el motor levanta ``WalkForwardCancelled`` en la
+    frontera de la ventana. Se corta a proposito aqui y no dentro de la
+    simulacion, que es donde un corte dejaria operaciones a medias.
     """
     if candles.empty:
         raise WalkForwardError("No hay velas en el rango")
@@ -882,8 +914,12 @@ def run_walk_forward(
         )
         if elegido is None:
             sin_seleccion += 1
-            if on_progress:
-                on_progress(len(outcomes) + sin_seleccion, len(ventanas), "sin señales")
+            _progreso(
+                on_progress,
+                len(outcomes) + sin_seleccion,
+                len(ventanas),
+                "sin señales en el IS",
+            )
             continue
         key, is_sharpe = elegido
         metricas, curva = evaluate_window(
@@ -914,8 +950,7 @@ def run_walk_forward(
         )
         if curva_mercado is not None:
             mercados.append(curva_mercado)
-        if on_progress:
-            on_progress(ventana.index, len(ventanas), key.label())
+        _progreso(on_progress, ventana.index, len(ventanas), key.label())
 
     candidatos = _build_candidates(outcomes, spec, iteraciones, seed)
     return WalkForwardReport(
@@ -928,19 +963,74 @@ def run_walk_forward(
     )
 
 
-def _combinaciones_validas(grid: SweepGrid) -> int:
-    """Celdas de la rejilla que producen una estrategia valida.
+def _progreso(
+    on_progress: Callable[[int, int, str], bool | None] | None,
+    hechas: int,
+    total: int,
+    etiqueta: str,
+) -> None:
+    """Notifica el avance y aborta si quien escucha dice que pare.
+
+    El corte va **despues** de la ventana, nunca en medio: una ventana que se
+    queda a medias deja operaciones sin resolver y una curva sin cerrar, y medio
+    informe es peor que ninguno. Cancelar entre ventanas cuesta como mucho una
+    ventana entera de trabajo.
+    """
+    if on_progress is None:
+        return
+    if on_progress(hechas, total, etiqueta) is False:
+        raise WalkForwardCancelled(f"Cancelado tras la ventana {hechas} de {total}")
+
+
+def _celdas_validas(grid: SweepGrid):
+    """Las celdas de la rejilla que producen una estrategia simulable.
 
     Una celda con TP y SL a ``None`` no se puede simular y ``sweep`` la salta, asi
-    que contarla aqui inflaria el numero de simulaciones que se anuncia y se
-    paga. Se cuenta con la misma regla que aplica ``SweepGrid.configs``.
+    que contarla inflaria el numero de simulaciones que se anuncia y se paga.
+
+    Es la **unica** definicion de esa regla en el modulo, y la usan tanto
+    ``_combinaciones_validas`` (que cuenta) como ``base_strategy`` (que toma la
+    primera). Tenerla en dos sitios es como se cuela un desajuste silencioso: uno
+    cuenta 18 celdas donde el otro ve 17, y el informe announce un coste que no
+    es el que se paga.
     """
-    return sum(
-        1
-        for _ in grid.max_holds
-        for sl in grid.stop_loss_pcts
-        for tp in grid.take_profit_pcts
-        if tp is not None or sl is not None
+    for max_hold in grid.max_holds:
+        for sl in grid.stop_loss_pcts:
+            for tp in grid.take_profit_pcts:
+                if tp is not None or sl is not None:
+                    yield tp, sl, max_hold
+
+
+def _combinaciones_validas(grid: SweepGrid) -> int:
+    return sum(1 for _ in _celdas_validas(grid))
+
+
+def base_strategy(grid: SweepGrid, initial_capital: float) -> StrategyConfig:
+    """La configuracion base de un walk-forward: la **primera celda valida**.
+
+    Existe por un motivo concreto: ``engine.StrategyConfig`` rechaza un
+    ``take_profit_pct`` y un ``stop_loss_pct`` a la vez a ``None``, con razon
+    (sin niveles no hay salida antes de ``max_hold``), asi que no se puede
+    construir un base neutro para que la rejilla lo rellene despues.
+
+    Los tres parametros que el walk-forward varye (TP, SL y ``max_hold``) los
+    sobrescriben siempre: ``sweep`` los sustituye por los de cada celda, y la
+    combinacion elegida por el IS se aplica con ``StrategyKey.apply``. Del base
+    solo se usan el capital, las comisiones, la fraccion y si se permite vender.
+    Aun asi se toma una celda **real** de la rejilla y no un valor inventado: si
+    algun dia algo se escapara sin sobrescribir, simularia una combinacion que el
+    usuario pidio, y no una arbitraria.
+    """
+    for tp, sl, max_hold in _celdas_validas(grid):
+        return StrategyConfig(
+            take_profit_pct=tp,
+            stop_loss_pct=sl,
+            max_hold=max_hold,
+            initial_capital=initial_capital,
+        )
+    raise WalkForwardError(
+        "La rejilla no tiene ninguna combinación simulable: todos los pares de "
+        "TP y SL son null"
     )
 
 
