@@ -25,6 +25,8 @@ from app.modules.features.schemas import (
     FeatureJobResponse,
     FeatureLogOut,
     FeaturePreviewOut,
+    IndicatorAvailabilityListOut,
+    IndicatorAvailabilityOut,
 )
 from app.modules.features.service import FeatureService
 
@@ -120,6 +122,31 @@ def delete_jobs_batch(body: BatchDeleteBody, db: Session = Depends(get_db)):
 def available_data(db: Session = Depends(get_db)):
     data = FeatureService().get_available_data()
     return data
+
+
+@router.get("/data/indicators", response_model=IndicatorAvailabilityListOut)
+def available_indicators(
+    symbol: str = Query(..., min_length=1),
+    timeframe: str = Query(..., min_length=1),
+):
+    """Indicadores ya calculados para un par, con su rango real.
+
+    Es lo que alimenta el selector del explorador de datos. La lista sale de lo
+    que hay en la base y de nada mas: el explorador **no calcula indicadores**,
+    muestra los que existen y avisa de los que faltan. Un indicador en pantalla
+    sin un job que lo haya producido rompe la trazabilidad desde el primer
+    eslabon.
+    """
+    return IndicatorAvailabilityListOut(
+        symbol=symbol.strip().upper(),
+        timeframe=timeframe.strip(),
+        indicators=[
+            IndicatorAvailabilityOut(**row)
+            for row in FeatureService().get_indicator_coverage(
+                symbol.strip().upper(), timeframe.strip()
+            )
+        ],
+    )
 
 
 @router.get("/jobs/{job_id}/preview", response_model=FeaturePreviewOut)

@@ -19,6 +19,28 @@ class FeatureJobConfig(BaseModel):
     indicators: list[IndicatorConfig]
 
 
+class IndicatorAvailabilityOut(BaseModel):
+    """Un indicador calculado, con la cobertura que tiene de verdad.
+
+    La cobertura importa mas que la existencia: en la base real ``EMA_20`` de
+    BTCUSDT viene de septiembre de 2021 y ``EMA_50`` solo de julio de 2026. Si
+    el selector los ofrece igual en un rango de 2022, el usuario descubre la
+    falta cuando ya esta mirando el grafico.
+    """
+
+    name: str
+    params: dict
+    date_from: datetime
+    date_to: datetime
+    points: int
+
+
+class IndicatorAvailabilityListOut(BaseModel):
+    symbol: str
+    timeframe: str
+    indicators: list[IndicatorAvailabilityOut] = Field(default_factory=list)
+
+
 class FeatureJobListItem(BaseModel):
     id: UUID
     status: FeatureJobStatus

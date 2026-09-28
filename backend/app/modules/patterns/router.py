@@ -25,6 +25,7 @@ from app.modules.patterns.models import (
 )
 from app.modules.patterns.schemas import (
     BatchDeleteBody,
+    ChartDataOut,
     PatternAvailableDataListOut,
     PatternCatalogOut,
     PatternDefinitionOut,
@@ -37,7 +38,11 @@ from app.modules.patterns.schemas import (
     PatternScanJobResponse,
     PatternScanLogOut,
 )
-from app.modules.patterns.service import PatternScanService
+from app.modules.patterns.service import (
+    CHART_MAX_POINTS_LIMIT,
+    DEFAULT_CHART_MAX_POINTS,
+    PatternScanService,
+)
 
 router = APIRouter(prefix="/api/v1/patterns", tags=["patterns"])
 
@@ -314,7 +319,96 @@ def job_occurrences(
     )
 
 
-@router.get("/scans/{job_id}/chart")
+def _chart_response(
+    symbol: str,
+    timeframe: str,
+    date_from: datetime,
+    date_to: datetime,
+    features: str | None,
+    patterns: str | None,
+    scan: uuid.UUID | None,
+    max_points: int | None,
+) -> ChartDataOut:
+    """Ensamblado comun de las dos rutas de grafico.
+
+    Las dos hacen exactamente la misma consulta con distinto punto de partida,
+    asi que la.shared_ queda aqui en vez de duplicada: cuando el formato cambie
+    (y cambiara, al anadir el muestreo) solo hay un sitio que tocar.
+    """
+    return PatternScanService().get_chart_data(
+        symbol=symbol,
+        timeframe=timeframe,
+        date_from=date_from,
+        date_to=date_to,
+        feature_names=_parse_features(features),
+        pattern_names=_split_csv(patterns),
+        scan_job_id=scan,
+        max_points=max_points,
+    )
+
+
+@router.get("/chart", response_model=ChartDataOut)
+def chart_data(
+    db: Session = Depends(get_db),
+    symbol: str = Query(..., min_length=1, description="Símbolo a graficar"),
+    timeframe: str = Query(..., min_length=1),
+    date_from: datetime | None = Query(default=None),
+    date_to: datetime | None = Query(default=None),
+    features: str | None = Query(
+        default=None, description="Features a superponer, separadas por comas"
+    ),
+    patterns: str | None = Query(
+        default=None, description="Patrones a marcar, separados por comas"
+    ),
+    scan: uuid.UUID | None = Query(
+        default=None, description="Escaneo cuyas detecciones se marcan"
+    ),
+    max_points: int | None = Query(
+        default=DEFAULT_CHART_MAX_POINTS,
+        ge=100,
+        le=CHART_MAX_POINTS_LIMIT,
+    ),
+):
+    """Velas + indicadores + detecciones, **sin necesidad de un escaneo**.
+
+    Es lo que consume el explorador de datos: se elige símbolo, timeframe y
+    rango y sale el grafico, aunque no se haya creado nunca un job de features
+    ni un escaneo. Los indicadores que se superponen son los que ya estan
+    calculados en la base; este endpoint no calcula ninguno.
+
+    Sin ``scan`` la lista de markers viene vacia a proposito: no se puede marcar
+    lo que no se ha escaneado, y marcarlo ademas de otro escaneo del mismo
+    rango haria que el grafico de un escaneo pareciera contener detecciones
+    ajenas.
+
+    ``max_points`` limita el numero de velas de la respuesta por paso constante,
+    conservando la ultima. Los indicadores se piden solo en las timestamps de
+    las velas que se envian, para que el overlay no quede desalineado. La
+    respuesta dice cuantas velas hay en el rango y cuantas se envian.
+    """
+    if date_from is None or date_to is None:
+        raise HTTPException(
+            status_code=422,
+            detail="Se necesita date_from y date_to: sin un rango explícito el "
+            "explorador no puede saber qué ventana está mirando el usuario",
+        )
+    if date_from >= date_to:
+        raise HTTPException(
+            status_code=422, detail="date_from debe ser anterior a date_to"
+        )
+    return _chart_response(
+        symbol.strip().upper(),
+        timeframe.strip(),
+        date_from,
+        date_to,
+        features,
+        patterns,
+        scan,
+        max_points,
+    )
+
+
+@router.get("/scans/{job_id}/chart", response_model=ChartDataOut)
 def job_chart(
     job_id: uuid.UUID,
     db: Session = Depends(get_db),
@@ -328,27 +422,32 @@ def job_chart(
     patterns: str | None = Query(
         default=None, description="Patrones a marcar, separados por comas"
     ),
+    max_points: int | None = Query(
+        default=DEFAULT_CHART_MAX_POINTS, ge=100, le=CHART_MAX_POINTS_LIMIT
+    ),
 ):
-    """Velas + indicadores + markers para lightweight-charts.
+    """Grafico de un escaneo concreto, con los parametros del job por defecto.
 
-    Simbolo, timeframe y rango caen por defecto en los del propio job, que es lo
-    que se quiere al abrir un escaneo concreto. Se pueden sobrescribir para
-    ampliar el rango o superponer otros indicadores.
+    Simbolo, timeframe y rango caen en los del propio job, que es lo que se
+    quiere al abrir un escaneo. Se pueden sobrescribir para ampliar el rango o
+    superponer otros indicadores.
+
+    **Cambio de comportamiento:** los markers ahora salen **solo de este
+    escaneo**. Antes se pedian por simbolo, timeframe y rango sin filtrar por
+    ``scan_job_id``, de modo que el grafico de un escaneo marcaba tambien las
+    detecciones de otros escaneos del mismo rango: lo que veias en el grafico no
+    era lo que ponia en la tabla de ocurrencias de al lado.
     """
     job = _job_or_404(db, job_id)
-    resolved_symbol = symbol or job.symbol
-    resolved_timeframe = timeframe or job.timeframe
-    resolved_from = date_from or job.date_from
-    resolved_to = date_to or job.date_to
-
-    requested = _parse_features(features)
-    return PatternScanService().get_chart_data(
-        symbol=resolved_symbol,
-        timeframe=resolved_timeframe,
-        date_from=resolved_from,
-        date_to=resolved_to,
-        feature_names=requested,
-        pattern_names=_split_csv(patterns),
+    return _chart_response(
+        symbol or job.symbol,
+        timeframe or job.timeframe,
+        date_from or job.date_from,
+        date_to or job.date_to,
+        features,
+        patterns,
+        job.id,
+        max_points,
     )
 
 

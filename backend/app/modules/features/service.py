@@ -517,6 +517,55 @@ class FeatureService:
             ).all()
             return [{"symbol": r[0], "timeframe": r[1]} for r in rows]
 
+    def get_indicator_coverage(self, symbol: str, timeframe: str) -> list[dict]:
+        """Que indicadores hay calculados para un par, y sobre que rango.
+
+        Existe para el selector del explorador de datos, y la clave es que
+        devuelve **la cobertura**, no solo la existencia. En la base real
+        ``EMA_50`` de BTCUSDT existe pero solo desde julio de 2026, mientras que
+        ``EMA_20`` viene de septiembre de 2021: ofrecer los dos en un rango de
+        2022 sin decirlo hace que el usuario descubra la falta cuando ya esta
+        mirando el grafico, que es la peor forma de descubrirla.
+
+        Se agrega en SQL con ``GROUP BY``: son 261.000 filas y traerlas para
+        contarlas en Python seria la opcion mas lenta de todas.
+        """
+        with SessionLocal() as db:
+            rows = db.execute(
+                select(
+                    Feature.indicator_name,
+                    Feature.indicator_params,
+                    func.min(Feature.timestamp).label("date_from"),
+                    func.max(Feature.timestamp).label("date_to"),
+                    func.count(Feature.timestamp).label("points"),
+                )
+                .where(Feature.symbol == symbol, Feature.timeframe == timeframe)
+                # Se agrupa tambien por los parametros porque ``indicator_params``
+                # es parte de la clave primaria: el mismo nombre puede existir
+                # con dos configuraciones distintas, y la cobertura de cada una es
+                # diferente. La PK incluye el JSONB, asi que el ``GROUP BY`` lo
+                # acepta directamente.
+                .group_by(Feature.indicator_name, Feature.indicator_params)
+                .order_by(Feature.indicator_name)
+            ).all()
+
+        # Una fila por indicador. Si hubiera dos configuraciones con el mismo
+        # nombre se queda la de mayor cobertura, que es la que un selector
+        # ofrece por defecto.
+        por_nombre: dict[str, dict] = {}
+        for name, params, date_from, date_to, points in rows:
+            anterior = por_nombre.get(name)
+            if anterior is not None and anterior["points"] >= int(points or 0):
+                continue
+            por_nombre[name] = {
+                "name": name,
+                "params": params or {},
+                "date_from": date_from,
+                "date_to": date_to,
+                "points": int(points or 0),
+            }
+        return [por_nombre[name] for name in sorted(por_nombre)]
+
     def _finalize_job(self, job_id: uuid.UUID) -> None:
         with SessionLocal() as db:
             job = db.get(FeatureJob, job_id)

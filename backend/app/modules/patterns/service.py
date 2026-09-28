@@ -12,6 +12,7 @@ deliberadas:
   ofrecer, e inventarlo seria mentirle al WebSocket.
 """
 
+import math
 import uuid
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
@@ -92,6 +93,81 @@ class ScanStep:
     params: Mapping[str, int | float]
     features: tuple[str, ...]
     codes: tuple[str, ...]
+
+
+#: Tope de velas que se envuelven en la respuesta de un grafico. Un ano de 1h
+#: son 8.760 velas, y por cada una hay una fila por indicador en ``features``.
+#: Es un tope de **payload**, no de datos: el paso de muestreo es entero, asi que
+#: la escala temporal no se sesga.
+DEFAULT_CHART_MAX_POINTS = 1_500
+
+#: Tope duro del parametro de la API. Por encima la respuesta deja de ser comoda
+#: de pintar aunque el navegador la aguante.
+CHART_MAX_POINTS_LIMIT = 5_000
+
+
+def sampling_plan(total_points: int, max_points: int | None) -> tuple[int, list[int]]:
+    """Paso de muestreo y posiciones de vela a conservar.
+
+    Devuelve ``(paso, indices)`` con ``paso == 1`` cuando no hace falta muestrear.
+
+    Vive fuera de la clase, y aparte de la consulta, por dos motivos: se puede
+    probar sin base de datos ni pandas, y su fallo es **silencioso**. Un paso mal
+    calculado no lanza nada, solo enseña otro rango del que el usuario pidio, y
+    eso no se ve hasta que alguien cuenta las velas.
+    """
+    if total_points <= 0:
+        return 1, []
+    if not max_points or max_points <= 0 or total_points <= max_points:
+        return 1, list(range(total_points))
+    if max_points < 2:
+        # El tope solo puede honrarse hasta dos velas, porque conservar la
+        # primera y la ultima son innegociables. El router exige ``ge=100``, asi
+        # que esto es defensa para un llamador interno, no un caso de API.
+        return total_points, [0, total_points - 1]
+
+    # El paso se calcula sobre ``max_points - 1`` y no sobre ``max_points``,
+    # porque la última vela se añade aparte y con el calculo ingenuo el tope se
+    # incumple: 10 velas con tope 3 dan paso 4, que son [0, 4, 8], y al añadir la
+    # ultima quedan 4 velas, una mas de las pedidas. Un parametro que se llama
+    # ``max_points`` y a veces devuelve mas es exactamente la clase de mentira
+    # que los cuatro campos del muestreo existen para evitar.
+    paso = math.ceil(total_points / (max_points - 1))
+    indices = [i for i in range(total_points) if i % paso == 0]
+    if indices[-1] != total_points - 1:
+        # La ultima vela se conserva siempre. Es el mismo descuido que se corrigio
+        # en la curva de equity del backtesting: al muestrear por paso constante
+        # el final cae dentro del hueco del ultimo paso, y un grafico que no
+        # llega al cierre no esta mostrando el cierre. Aqui se nota menos, pero
+        # el principe es el mismo.
+        indices.append(total_points - 1)
+    return paso, indices
+
+
+def _candle_rows(candles: pd.DataFrame, indices: Sequence[int]) -> list[dict]:
+    """Filas de vela de las posiciones indicadas, en dicts planos.
+
+    Las columnas se convierten a numpy **una vez**, fuera del bucle. Leer
+    ``candles["open"]`` por posicion reconstruye la Serie entera en cada vuelta:
+    con 1.500 velas serian 6.000 reconstrucciones en vez de cinco conversiones,
+    y el coste crece con el rango hasta que la pantalla tarda en abrir.
+    """
+    opens = candles["open"].to_numpy(dtype=float)
+    highs = candles["high"].to_numpy(dtype=float)
+    lows = candles["low"].to_numpy(dtype=float)
+    closes = candles["close"].to_numpy(dtype=float)
+    volumes = candles["volume"].to_numpy(dtype=float)
+    return [
+        {
+            "timestamp": candles.index[position].to_pydatetime(),
+            "open": float(opens[position]),
+            "high": float(highs[position]),
+            "low": float(lows[position]),
+            "close": float(closes[position]),
+            "volume": float(volumes[position]),
+        }
+        for position in indices
+    ]
 
 
 class PatternScanService:
@@ -496,12 +572,20 @@ class PatternScanService:
         date_from: datetime,
         date_to: datetime,
         feature_names: Sequence[str],
+        only_timestamps: Sequence[datetime] | None = None,
     ) -> pd.DataFrame:
         """Carga las features en ancho con **una** consulta.
 
         Se traen en formato largo (timestamp, indicator_name, value) y se
         pivota en memoria: una consulta por indicador seria el clasico N+1 que
         el documento de la tarea prohibe.
+
+        ``only_timestamps`` recorta a un conjunto concreto de instantes, y existe
+        por el muestreo de velas: si el grafico pinta 1.500 de 8.760 velas, los
+        indicadores se piden **solo en esas 1.500**. Traer los dos por separado y
+        dejar que lightweight-charts los una por tiempo produciria un overlay
+        correcto en apariencia pero anclado a velas que no estan en pantalla, que
+        es la forma de que el grafico parezca bien y no lo este.
         """
         from app.modules.features.models import Feature
 
@@ -510,14 +594,19 @@ class PatternScanService:
             return pd.DataFrame()
 
         with SessionLocal() as db:
-            rows = db.execute(
+            stmt = (
                 select(Feature.timestamp, Feature.indicator_name, Feature.value)
                 .where(Feature.symbol == symbol)
                 .where(Feature.timeframe == timeframe)
                 .where(Feature.timestamp >= date_from)
                 .where(Feature.timestamp <= date_to)
                 .where(Feature.indicator_name.in_(names))
-            ).all()
+            )
+            if only_timestamps is not None:
+                if not only_timestamps:
+                    return pd.DataFrame()
+                stmt = stmt.where(Feature.timestamp.in_(list(only_timestamps)))
+            rows = db.execute(stmt).all()
 
         if not rows:
             return pd.DataFrame()
@@ -665,41 +754,71 @@ class PatternScanService:
         date_to: datetime,
         feature_names: Sequence[str] | None = None,
         pattern_names: Sequence[str] | None = None,
+        scan_job_id: uuid.UUID | None = None,
+        max_points: int | None = None,
     ) -> dict:
-        """Velas + series de indicators + ocurrencias para pintar el grafico.
+        """Velas + series de indicadores + ocurrencias para pintar el grafico.
 
         Los markers se calculan aqui (no en el frontend) para que el mapeo al
         formato de lightweight-charts sea una traduccion trivial y el cliente no
         tenga que saber nada de nombres de feature.
+
+        **No necesita un escaneo**: el rango, los indicadores y los patrones se
+        reciben aqui y el unico opcional es ``scan_job_id``, que es lo unico que
+        la ruta de escaneo aporta. Por eso el explorador de datos puede leer el
+        grafico sin haber creado nunca un job.
+
+        Tres decisiones que no son evidentes:
+
+        * **El muestreo de velas no es libre.** Con paso constante se pierde
+          precision, pero el precio se mantiene comparable entre velas porque
+          todas son del mismo timeframe y solo se saltan algunas. Lo que **no**
+          puede hacerse es muestrear los indicadores por separado: se
+          desalinearian del eje temporal y el overlay dibujaria sobre velas que
+          no son las suyas. Por eso se eligen primero las timestamps de las
+          velas y los indicadores se piden solo en esas.
+
+        * **La ultima vela se conserva siempre.** Es el mismo descuido que se
+          corrigio en la curva de equity del backtesting, donde el muestreo por
+          paso dejaba la serie terminando en el penultimo punto y el
+          ``equity_final`` de la tarjeta no se veia nunca en el grafico. Aqui el
+          coste es menor, pero el principio es identico: un grafico que no
+          llega al final no esta mostrando el final.
+
+        * **Los indicadores que no existen se declaran.** ``features`` tiene una
+          cobertura irregular (``EMA_50`` solo existe desde 2026-07 para
+          BTCUSDT) y descartarlos en silencio haria que un ``ATR_14`` pedido en
+          2022 desapareciera del grafico sin dejar rastro, que se lee como "no
+          esta implementado".
         """
         candles = load_candles(symbol, timeframe, date_from, date_to)
+        total_points = int(len(candles))
+
+        paso, indices = sampling_plan(total_points, max_points)
+        timestamps = (
+            [candles.index[position].to_pydatetime() for position in indices]
+            if indices
+            else None
+        )
         if candles.empty:
+            # Rango sin velas. Pasa de verdad (el explorador pregunta por
+            # cualquier ventana, included una que no este importada) y la
+            # respuesta tiene que ser un grafico vacio, no un 500: un
+            # ``candles["open"]`` sobre un frame sin columnas lanza ``KeyError``.
             candle_rows: list[dict] = []
         else:
-            candle_rows = [
-                {
-                    "timestamp": index.to_pydatetime(),
-                    "open": float(open_),
-                    "high": float(high),
-                    "low": float(low),
-                    "close": float(close),
-                    "volume": float(volume),
-                }
-                for index, open_, high, low, close, volume in zip(
-                    candles.index,
-                    candles["open"].to_numpy(),
-                    candles["high"].to_numpy(),
-                    candles["low"].to_numpy(),
-                    candles["close"].to_numpy(),
-                    candles["volume"].to_numpy(),
-                    strict=True,
-                )
-            ]
+            candle_rows = _candle_rows(candles, indices)
 
+        requested = sorted(set(feature_names)) if feature_names else []
         indicators: dict[str, list[dict]] = {}
-        if feature_names:
+        if requested:
             features = self._load_features_pivot(
-                symbol, timeframe, date_from, date_to, feature_names
+                symbol,
+                timeframe,
+                date_from,
+                date_to,
+                requested,
+                only_timestamps=timestamps,
             )
             for name in features.columns:
                 series = features[name].dropna()
@@ -713,17 +832,19 @@ class PatternScanService:
                         strict=True,
                     )
                 ]
+        missing = [name for name in requested if name not in indicators]
 
-        occurrences, _ = self.get_occurrences(
-            symbol=symbol,
-            timeframe=timeframe,
-            pattern_names=pattern_names,
-            date_from=date_from,
-            date_to=date_to,
-            limit=5000,
-        )
+        occurrences: list[dict] = []
+        markers: list[dict] = []
+        if scan_job_id is not None:
+            occurrences, _ = self.get_occurrences(
+                job_id=scan_job_id,
+                pattern_names=pattern_names,
+                date_from=date_from,
+                date_to=date_to,
+                limit=5000,
+            )
 
-        markers = []
         for occurrence in occurrences:
             definition = catalog.get_definition(occurrence["pattern_name"])
             if definition is None:
@@ -744,10 +865,16 @@ class PatternScanService:
         return {
             "symbol": symbol,
             "timeframe": timeframe,
+            "date_from": date_from,
+            "date_to": date_to,
             "candles": candle_rows,
             "indicators": indicators,
-            "occurrences": occurrences,
+            "missing_indicators": missing,
             "markers": markers,
+            "total_points": total_points,
+            "returned": len(candle_rows),
+            "step": paso,
+            "sampled": paso > 1,
         }
 
     def get_available_data(self) -> list[dict]:

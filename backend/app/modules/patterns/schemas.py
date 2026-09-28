@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, Field, model_validator
@@ -94,6 +95,97 @@ class PatternScanConfig(BaseModel):
         if unknown:
             raise ValueError(f"Patrones desconocidos: {', '.join(unknown)}")
         return self
+
+
+class ChartCandleOut(BaseModel):
+    """Vela del grafico. A diferencia de ``DataCandleOut``, los OHLCV son
+    ``float`` y no ``Decimal``: lightweight-charts los quiere como numero y el
+    cliente no deberia estar convertiendo para pintar."""
+
+    timestamp: datetime
+    open: float
+    high: float
+    low: float
+    close: float
+    volume: float
+
+
+class ChartIndicatorPointOut(BaseModel):
+    timestamp: datetime
+    value: float
+
+
+class ChartMarkerOut(BaseModel):
+    """Marker ya resuelto al formato de la libreria.
+
+    ``position`` y ``shape`` son los literales que espera lightweight-charts, y
+    los decide **el backend**: bullish -> ``belowBar`` + ``arrowUp`` en verde.
+    Duplicar ese mapeo en el frontend haria que un cambio de color se aplicase
+    a la mitad de las pantallas.
+    """
+
+    timestamp: datetime
+    pattern_name: str
+    position: Literal["aboveBar", "belowBar"]
+    shape: Literal["arrowUp", "arrowDown"]
+    color: str
+    text: str
+    details: dict
+
+
+class ChartDataOut(BaseModel):
+    """Respuesta comun de las dos rutas de grafico.
+
+    Se declara ahora, cuando la ruta de escaneo ya llevaba varias pantallas sin
+    un contrato en el servidor: el tipo del frontend era lo unico que fijaba la
+    forma de la respuesta, asi que cualquier clave nueva era invisible para
+    quien documenta la API.
+
+    Los cuatro campos del muestreo (``total_points``, ``returned``, ``step``,
+    ``sampled``) existen por una razon concreta: un grafico que enseña 1.500
+    velas de un rango de 8.760, sin decirlo, se lee como el rango completo. Es el
+    mismo motivo por el que ``BacktestEquitySeriesOut`` lleva ``total_points`` y
+    ``returned``, y por el que una vez se perdio el cierre final de la curva.
+    """
+
+    symbol: str
+    timeframe: str
+    date_from: datetime | None = None
+    date_to: datetime | None = None
+    candles: list[ChartCandleOut]
+    indicators: dict[str, list[ChartIndicatorPointOut]]
+    markers: list[ChartMarkerOut]
+    #: Indicadores pedidos explicitamente que no tienen ni un punto en el rango.
+    #: No se omiten en silencio: la cobertura de ``features`` es irregular y sin
+    #: este campo un ``ATR_14`` pedido en 2022 desapareceria sin dejar rastro.
+    missing_indicators: list[str] = Field(default_factory=list)
+    total_points: int = 0
+    returned: int = 0
+    #: Velas saltadas entre una pintada y la siguiente. 1 = sin muestrear.
+    step: int = 1
+    sampled: bool = False
+
+
+class IndicatorAvailabilityOut(BaseModel):
+    """Un indicador que hay en la base, con su cobertura real.
+
+    La cobertura importa mas que la existencia: ``EMA_50`` existe para BTCUSDT
+    pero solo desde julio de 2026, y ofrecerla en un rango de 2022 sin decirlo
+    es la forma de que el usuario descubra la falta cuando ya esta mirando el
+    grafico.
+    """
+
+    name: str
+    params: dict
+    date_from: datetime
+    date_to: datetime
+    points: int
+
+
+class IndicatorAvailabilityListOut(BaseModel):
+    symbol: str
+    timeframe: str
+    indicators: list[IndicatorAvailabilityOut] = Field(default_factory=list)
 
 
 class PatternScanJobListItem(BaseModel):
