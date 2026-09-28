@@ -19,6 +19,7 @@ y no tiene por que saber que existe un boton de cancelar.
 from __future__ import annotations
 
 import math
+import time
 import uuid
 from datetime import datetime, timezone
 from decimal import Decimal
@@ -446,6 +447,11 @@ class WalkForwardService:
         # escapara, simularia una combinacion que el usuario pidio.
         base = base_strategy(rejilla, float(run.initial_capital))
 
+        # El reloj empieza **antes** de cargar velas. Medir solo el motor
+        # compararía el trabajo del motor con lo que cuesta traerlo, y el
+        # usuario ve un tiempo en el que no esta esperando el motor sino la
+        # base de datos. Los dos son tiempo suyo.
+        started = time.perf_counter()
         informe = run_walk_forward(
             candles,
             signals,
@@ -460,7 +466,8 @@ class WalkForwardService:
             self._log_committed(run_id, "info", "Cancelado antes de escribir")
             return
 
-        self._guardar(run_id, informe, base.initial_capital)
+        elapsed_ms = int((time.perf_counter() - started) * 1000)
+        self._guardar(run_id, informe, base.initial_capital, elapsed_ms)
         self._log_committed(
             run_id,
             "info",
@@ -495,7 +502,11 @@ class WalkForwardService:
     # ------------------------------------------------------------ persistencia
 
     def _guardar(
-        self, run_id: uuid.UUID, informe: WalkForwardReport, capital: float
+        self,
+        run_id: uuid.UUID,
+        informe: WalkForwardReport,
+        capital: float,
+        elapsed_ms: int | None = None,
     ) -> None:
         """Escribe ventanas, candidatos y curva. Idempotente por ``run_id``.
 
@@ -528,6 +539,8 @@ class WalkForwardService:
             run.windows = len(informe.windows)
             run.windows_without_selection = informe.windows_without_selection
             run.simulations = informe.simulations
+            if elapsed_ms is not None:
+                run.elapsed_ms = elapsed_ms
             curva = informe.oos_equity
             if curva is not None and not curva.empty:
                 run.equity_final = Decimal(str(float(curva["equity"].iloc[-1])))

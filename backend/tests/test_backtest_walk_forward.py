@@ -1306,3 +1306,75 @@ def test_la_curva_se_inventa_una_ventana_de_un_tramo_de_la_otra():
     assert (huecos == 1).all(), (
         f"hay saltos en la curva: {sorted(set(huecos))} horas entre puntos seguidos"
     )
+
+
+# ---------------------------------------------------------------------------
+# El benchmark encadenado
+# ---------------------------------------------------------------------------
+def test_el_benchmark_encadenado_no_es_una_copia_de_la_estrategia():
+    """El bug que solo aparecio en la verificacion E2E.
+
+    ``_chain_equity`` recibia las curvas de la estrategia y asignaba
+    ``market_equity = equity``: la columna del mercado era **la misma serie**,
+    copiada. Como el informe guardaba las dos, el retorno del mercado salia
+    identico al de la estrategia hasta el sexto decimal, la diferencia contra el
+    mercado era siempre exactamente cero, y el grafico pintaba dos lineas
+    superpuestas.
+
+    Ninguno de los tests de este archivo lo veia, porque todos comprobaban la
+    columna de equity y su unicidad, y una columna duplicada de otra es
+    perfectamente unica. Solo hacia falta comprobar que las dos **difieren**, que
+    es la unica asercion que distingue "dos medidas" de "una medida repetida".
+    """
+    marco = velas(24 * 120)
+    senales = señales(marco)
+    informe = run_walk_forward(
+        marco,
+        senales,
+        StrategyConfig(take_profit_pct=2.0, stop_loss_pct=1.0, max_hold=12),
+        REJILLA,
+        spec(window_days=30, oos_days=15, step_days=15, min_windows=1),
+    )
+    curva = informe.oos_equity
+
+    assert not curva.empty
+    assert (curva["equity"] != curva["market_equity"]).any(), (
+        "el benchmark encadenado es una copia de la estrategia: el retorno del "
+        "mercado y el de la estrategia estan saliendo identicos"
+    )
+
+
+def test_el_benchmark_encadenado_es_la_composicion_de_sus_ventanas():
+    """Y no solo que difiere: que **es** el mercado, compuesto ventana a ventana.
+
+     Comparar la estrategia encadenada contra un mercado que no esta encadenado
+     daria una diferencia que no existe, y ahi el fallo se ve como una ventaja
+    架空. El control es aritmetico: el retorno encadenado del benchmark tiene que
+     salir de componer los retornos por ventana, y ese numero ya esta en
+     ``WindowMetrics`` sin pasar por la curva.
+    """
+    marco = velas(24 * 120)
+    senales = señales(marco)
+    informe = run_walk_forward(
+        marco,
+        senales,
+        StrategyConfig(take_profit_pct=2.0, stop_loss_pct=1.0, max_hold=12),
+        REJILLA,
+        spec(window_days=30, oos_days=15, step_days=15, min_windows=1),
+    )
+    esperado = 1.0
+    for outcome in informe.windows:
+        esperado *= 1 + outcome.oos.market_return_pct / 100
+    esperado = (esperado - 1) * 100
+
+    curva = informe.oos_equity
+    capital = 1000.0
+    con_velas = float(curva["market_equity"].iloc[-1]) / capital
+    real = (con_velas - 1) * 100
+    # La curva pierde la fila de frontera de cada ventana, asi que el final
+    # encadenado cae en el ultimo tramo y el compuesto exacto difiere un poco.
+    # Se comprueba que estan en la misma escala, que es lo que se rompio.
+    assert abs(real - esperado) < 25, (
+        f"el benchmark encadenado da {real:+.2f}% y la composición de las "
+        f"ventanas da {esperado:+.2f}%"
+    )

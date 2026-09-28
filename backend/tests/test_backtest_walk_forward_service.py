@@ -162,6 +162,10 @@ def test_el_run_terminado_persiste_ventanas_candidatas_y_curva(db, servicio, pet
     assert candidatos > 0
     assert puntos > 0, "sin curva no se puede pintar el informe"
     assert guardado.simulations == ventanas * 2
+    assert guardado.elapsed_ms is not None and guardado.elapsed_ms > 0, (
+        "sin elapsed_ms la lista muestra un guion y el usuario no puede "
+        "distinguir 'estuvo dos minutos' de 'estuvo dos minutos probando 1.800 cosas'"
+    )
 
 
 def test_no_se_persisten_las_simulaciones_individuales(db, servicio, peticion):
@@ -221,6 +225,10 @@ def test_la_curva_lleva_el_benchmark_y_la_ventana_de_cada_tramo(db, servicio, pe
     )
     assert len(puntos) > 1
     assert all(p.market_equity is not None for p in puntos)
+    assert any(p.equity != p.market_equity for p in puntos), (
+        "el benchmark guardado es una copia de la estrategia: el retorno del "
+        "mercado y el de la estrategia salen identicos"
+    )
     assert all(p.window_index >= 1 for p in puntos), (
         "sin el indice de ventana no se puede contrastar un tramo del grafico con "
         "su fila de la tabla de ventanas"

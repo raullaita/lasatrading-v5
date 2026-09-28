@@ -814,10 +814,8 @@ def _recortar(curva: pd.DataFrame | None, desde: pd.Timestamp, hasta: pd.Timesta
     return curva[(curva.index >= desde) & (curva.index <= hasta)]
 
 
-def _chain_equity(
-    curvas: Sequence[pd.DataFrame | None], capital: float
-) -> pd.DataFrame:
-    """Encadena las curvas OOS rebasando cada ventana en el capital anterior.
+def _encadenar(curvas: Sequence[pd.Series], capital: float) -> pd.Series:
+    """Encadena varias curvas rebasando cada tramo en el capital anterior.
 
     Sin esto, la curva conjunta de dos ventanas tendria un salto del 100% al
     return de la segunda, que no es un movimiento del mercado: es un reinicio de
@@ -827,10 +825,10 @@ def _chain_equity(
     partes: list[pd.Series] = []
     actual = capital
     ultimo_ts: pd.Timestamp | None = None
-    for curva in curvas:
-        if curva is None or curva.empty:
+    for serie in curvas:
+        if serie is None or serie.empty:
             continue
-        serie = curva["equity"].astype(float)
+        serie = serie.astype(float)
         # Con ventanas contiguas la vela de frontera es la ultima de una y la
         # primera de la siguiente. Encadenar las dos duplica ese timestamp, y un
         # indice con repetidos rompe dos cosas a la vez: el drawdown acumulado
@@ -847,17 +845,48 @@ def _chain_equity(
             continue
         factor = actual / base
         partes.append(serie * factor)
-        ultimo_ts = curva.index[-1]
+        ultimo_ts = serie.index[-1]
         actual = float(serie.iloc[-1]) * factor
     if not partes:
+        return pd.Series(
+            dtype=float, index=pd.DatetimeIndex([], tz="UTC", name="timestamp")
+        )
+    return pd.concat(partes)
+
+
+def _chain_equity(
+    curvas: Sequence[pd.Series], mercados: Sequence[pd.Series], capital: float
+) -> pd.DataFrame:
+    """Curva OOS encadenada de la estrategia y del mercado, en un solo frame.
+
+    Las dos series se rebasan por separado y con el **mismo** reparto de
+    ventanas, para que sean comparables vela a vela. Encadenar solo la estrategia
+    y poner el mercado al lado seria comparar dos cosas medidas sobre rangos
+    distintos, que es la forma mas sutil de fabricar una ventaja que no existe.
+
+    Las dos curvas tienen los mismos indices porque salen de las mismas
+    ventanas; si alguna no cuadra, se reindexa la del mercado a la de la
+    estrategia y se deja un hueco en vez de inventar un punto.
+    """
+    # ``curvas`` llegan como frames completos de la simulacion y ``mercados``
+    # como series sueltas; aqui se reducen las dos a series de equity, que es lo
+    # unico que se encadena. Dejar frames donde se esperan series daria una
+    # ``Series`` dentro de un ``float()``, que es un fallo de tipos y no de
+    # logica, y por eso se normaliza en un solo sitio.
+    estrategia = _encadenar(
+        [curva["equity"] if curva is not None else None for curva in curvas], capital
+    )
+    mercado = _encadenar(mercados, capital)
+    if estrategia.empty:
         return pd.DataFrame(
             columns=["equity", "market_equity", "drawdown_pct"],
             index=pd.DatetimeIndex([], tz="UTC", name="timestamp"),
         )
-    encadenada = pd.concat(partes)
-    return encadenada.to_frame("equity").assign(
-        market_equity=encadenada,
-        drawdown_pct=((encadenada.cummax() - encadenada) / encadenada.cummax() * 100),
+    mercado = mercado.reindex(estrategia.index)
+    maximo = estrategia.cummax()
+    return estrategia.to_frame("equity").assign(
+        market_equity=mercado,
+        drawdown_pct=((maximo - estrategia) / maximo * 100),
     )
 
 
@@ -957,7 +986,7 @@ def run_walk_forward(
         spec=spec,
         windows=outcomes,
         candidates=candidatos,
-        oos_equity=_chain_equity(curvas, capital),
+        oos_equity=_chain_equity(curvas, mercados, capital),
         simulations=_combinaciones_validas(grid) * len(ventanas),
         windows_without_selection=sin_seleccion,
     )
