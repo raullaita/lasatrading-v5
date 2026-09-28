@@ -272,7 +272,7 @@ en la raíz del proyecto. Los comandos obligatorios son:
 | — | 4 · Detección de patrones | Completa |
 | — | 4bis · Backtesting (motor, API, UI, análisis MAE/MFE, barrido, benchmark) | Completa. Ciclo de investigación cerrado. |
 | 1 | 3.5 · Data Explorer mejorado | Pendiente (absorbe la antigua galería de indicadores) |
-| 2 | 5.5 · Optimizador walk-forward | Pendiente |
+| 2 | 5.5 · Optimizador walk-forward | Especificada, pendiente de implementar |
 | 3 | 6 · Alertas | Pendiente. Bloqueada por la 5.5. |
 | 4 | 7 · Ejecución | Fuera de alcance |
 
