@@ -10,6 +10,7 @@ import {
   ScanSearch,
   Sun,
   TableProperties,
+  TrendingUp,
 } from "lucide-react";
 import { lazy, Suspense } from "react";
 import { Link, NavLink, Route, Routes } from "react-router-dom";
@@ -37,6 +38,9 @@ const ScanDetail = lazy(() => import("./pages/Patterns/ScanDetail"));
 const BacktestList = lazy(() => import("./pages/Backtesting/BacktestList"));
 const NewBacktest = lazy(() => import("./pages/Backtesting/NewBacktest"));
 const BacktestDetail = lazy(() => import("./pages/Backtesting/BacktestDetail"));
+const WalkForwardList = lazy(() => import("./pages/WalkForward/WalkForwardList"));
+const NewWalkForward = lazy(() => import("./pages/WalkForward/NewWalkForward"));
+const WalkForwardDetail = lazy(() => import("./pages/WalkForward/WalkForwardDetail"));
 
 /**
  * Placeholder de carga de las rutas diferidas.
@@ -64,6 +68,7 @@ const navItems = [
   { to: "/features", label: "Indicadores", icon: LineChart },
   { to: "/patterns", label: "Patrones", icon: ScanSearch },
   { to: "/backtesting", label: "Backtesting", icon: Activity },
+  { to: "/walk-forward", label: "Walk-forward", icon: TrendingUp },
   { to: "/alerts", label: "Alertas", icon: Bell },
 ];
 
@@ -72,6 +77,7 @@ const modules = [
   { label: "Cálculo de Features", icon: LineChart },
   { label: "Detección de Patrones", icon: ScanSearch },
   { label: "Backtesting", icon: Activity },
+  { label: "Walk-forward", icon: TrendingUp },
   { label: "Alertas", icon: Bell },
   { label: "Ejecución", icon: Rocket },
 ];
@@ -207,6 +213,9 @@ export default function App() {
           <Route path="/backtesting" element={<BacktestList />} />
           <Route path="/backtesting/new" element={<NewBacktest />} />
           <Route path="/backtesting/runs/:runId" element={<BacktestDetail />} />
+          <Route path="/walk-forward" element={<WalkForwardList />} />
+          <Route path="/walk-forward/new" element={<NewWalkForward />} />
+          <Route path="/walk-forward/runs/:runId" element={<WalkForwardDetail />} />
           <Route path="/alerts" element={<ModulePlaceholder module="Alertas" />} />
           <Route
             path="*"
