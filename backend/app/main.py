@@ -7,6 +7,9 @@ from app.modules.backtesting import (
     models as _backtesting_models,  # noqa: F401  # metadata Alembic
 )
 from app.modules.backtesting.router import router as backtesting_router
+from app.modules.backtesting.walk_forward_router import (
+    router as walk_forward_router,
+)
 from app.modules.data.router import router as data_router
 from app.modules.data_import import (
     models as _data_import_models,  # noqa: F401  # metadata Alembic
@@ -48,6 +51,7 @@ app.include_router(data_router)
 app.include_router(features_router)
 app.include_router(patterns_router)
 app.include_router(backtesting_router)
+app.include_router(walk_forward_router)
 
 
 @app.get("/health")

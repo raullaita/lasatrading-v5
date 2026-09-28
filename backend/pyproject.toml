@@ -7,4 +7,9 @@ src = ["app"]
 select = ["E", "F", "I", "B", "UP", "SIM"]
 
 [tool.ruff.lint.per-file-ignores]
-"app/**/router.py" = ["B008"]
+# B008 se desactiva en cualquier router, no solo en los que se llamen exactamente
+# `router.py`: `Depends(...)` en los defaults de la firma **es** el mecanismo de
+# inyeccion de FastAPI, asi que la regla no aplica a ninguno. El patron era
+# `app/**/router.py`, que no cogia a `walk_forward_router.py` porque exige el
+# nombre exacto, y por eso el router de walk-forward salia con seis B008.
+"app/**/*router*.py" = ["B008"]

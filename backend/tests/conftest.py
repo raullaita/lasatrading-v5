@@ -269,6 +269,84 @@ def db(db_schema):
         connection.exec_driver_sql(f"TRUNCATE {tablas} RESTART IDENTITY CASCADE")
 
 
+# ---------------------------------------------------------------------------
+# Fixture compartida: un escaneo con rango suficiente para ventanas
+# ---------------------------------------------------------------------------
+@pytest.fixture
+def escaneo(db):
+    """Escaneo completado de 150 dias a 1h, con señales repartidas.
+
+    Vive aqui, y no en uno de los archivos de walk-forward, porque lo usan tanto
+    los tests del servicio como los del router, y duplicar 3.600 velas en dos
+    ficheros es copiar el fichero entero del que sale.
+
+    Suficiente para varias ventanas de 30/15 dias, que es lo que necesitan los
+    tests: con menos de unas 40 velas no sale ni una ventana, y un test que pide
+    dos no puede quedarse en una.
+    """
+    from datetime import datetime, timedelta, timezone
+
+    from app.modules.data_import.models import Candle
+    from app.modules.patterns.models import (
+        PatternOccurrence,
+        PatternScanJob,
+        PatternScanJobStatus,
+    )
+
+    inicio = datetime(2023, 1, 1, tzinfo=timezone.utc)
+    fin = inicio + timedelta(days=150)
+    job = PatternScanJob(
+        symbol="TESTUSDT",
+        timeframe="1h",
+        date_from=inicio,
+        date_to=fin,
+        status=PatternScanJobStatus.COMPLETED.value,
+        total_candles=150 * 24,
+        processed_candles=150 * 24,
+    )
+    db.add(job)
+    db.flush()
+
+    # Rango con recorrido: sube, baja y sube. Con una pendiente monotona el
+    # mercado y la estrategia coinciden siempre, y la guarda de "supera al
+    # mercado" no distingue nada.
+    for i in range(150 * 24):
+        hora = i / 24
+        base = 100.0 + 8.0 * ((hora % 60) / 60) + 0.3 * ((hora // 60) % 5)
+        db.add(
+            Candle(
+                timestamp=inicio + timedelta(hours=i),
+                symbol="TESTUSDT",
+                timeframe="1h",
+                open=base,
+                high=base + 0.4,
+                low=base - 0.4,
+                close=base + 0.1,
+                volume=10.0,
+            )
+        )
+    for i in range(0, 150 * 24, 12):
+        db.add(
+            PatternOccurrence(
+                scan_job_id=job.id,
+                timestamp=inicio + timedelta(hours=i),
+                symbol="TESTUSDT",
+                timeframe="1h",
+                pattern_name=(
+                    "MACD_CROSS_BULLISH" if i % 24 == 0 else "RSI_EXIT_OVERSOLD"
+                ),
+                # ``details``, no ``metadata``: la columna en base se llama
+                # "metadata" pero el atributo mapeado se renombra porque
+                # "metadata" esta reservado. Pasar ``metadata=`` no falla, se
+                # guarda como atributo suelto y la columna se queda con su ``{}``
+                # por defecto, dejando las señales sin dirección y sin avisar.
+                details={"direction": "bullish"},
+            )
+        )
+    db.commit()
+    return job
+
+
 @pytest.fixture
 def service():
     from app.modules.backtesting.service import BacktestService
