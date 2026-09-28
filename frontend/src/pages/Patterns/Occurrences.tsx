@@ -322,7 +322,7 @@ export default function Occurrences() {
           onViewOccurrence={(occurrence) =>
             // El gráfico vive en el detalle de un escaneo, así que se salta al
             // job dueño de la detección y se pasa `?ts=`, que es lo que lee
-            // `PatternChart` para centrar la vista.
+            // `UnifiedChart` para centrar la vista.
             navigate(
               `/patterns/scans/${occurrence.scan_job_id}?ts=${encodeURIComponent(occurrence.timestamp)}`,
             )

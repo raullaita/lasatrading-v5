@@ -1,3 +1,5 @@
+import type { ChartData } from "./chart";
+
 /**
  * Tipos del modulo de patrones, espejo de `backend/app/modules/patterns/schemas.py`.
  *
@@ -284,34 +286,13 @@ export interface PatternScanLog {
   progress: number | null;
 }
 
-// ---------------------------------------------------------------------------
-// Chart
-// ---------------------------------------------------------------------------
-
-/** Una vela del chart. A diferencia de `DataCandle`, aqui los OHLCV son number. */
-export interface PatternChartCandle {
-  timestamp: string;
-  open: number;
-  high: number;
-  low: number;
-  close: number;
-  volume: number;
-}
-
-/** Punto de una serie de indicador superpuesta. */
-export interface PatternChartIndicatorPoint {
-  timestamp: string;
-  value: number;
-}
-
 /**
  * Marker para lightweight-charts, ya resuelto por el backend.
  *
  * `position` y `shape` son los literales que espera la libreria, no valores
  * inventados aqui: el backend decide bullish -> `belowBar` + `arrowUp` en
  * verde, y bearish -> `aboveBar` + `arrowDown` en rojo. Duplicar esa logica en
- * el frontend haria que un cambio de color se aplicara en un sitio y no en el
- * otro.
+ * el frontend haria que un cambio de color se aplicara a un sitio y a otro no.
  */
 export interface PatternChartMarker {
   timestamp: string;
@@ -324,21 +305,18 @@ export interface PatternChartMarker {
 }
 
 /**
- * Respuesta de `GET /scans/{id}/chart`.
+ * `GET /scans/{id}/chart` es **la misma ruta** que `GET /patterns/chart`, con los
+ * parametros del escaneo por defecto. Su tipo es, por tanto, el mismo.
  *
- * El endpoint no declara `response_model` (devuelve el dict de
- * `get_chart_data`), asi que este tipo es contrato del cliente: si el backend
- * anade una clave, hay que anadirla aqui.
+ * Se conserva el alias porque el nombre aparece en dos sitios mas, y borrar el
+ * simbolo seria ruido por el gusto de borrar simbolos. Lo que no se conserva es
+ * la **interfaz duplicada**: tener el contrato del grafico en dos sitios es
+ * exactamente como se cuela un cambio en uno y no en el otro, y ya paso — la
+ * primera vez que esta ruta dejo de declarar `response_model`, el unico contrato
+ * era este fichero y ninguna clave nueva se contrastaba contra nada.
  *
- * `indicators` es un mapa de nombre a serie, no una lista. Viene filtrado por
- * `features` y las series con NaN ya vienen recortadas (`dropna`), asi que
- * hay puntos sueltos y lightweight-charts los tiene que unir por tiempo.
+ * `indicators` sigue siendo un mapa de nombre a serie y no una lista: las series
+ * con NaN ya vienen recortadas (`dropna`), asi que hay puntos sueltos y
+ * lightweight-charts los une por tiempo.
  */
-export interface PatternChartData {
-  symbol: string;
-  timeframe: string;
-  candles: PatternChartCandle[];
-  indicators: Record<string, PatternChartIndicatorPoint[]>;
-  occurrences: PatternOccurrence[];
-  markers: PatternChartMarker[];
-}
+export type PatternChartData = ChartData;

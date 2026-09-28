@@ -5,7 +5,7 @@ import type { PatternChartMarker, PatternOccurrence } from "../../types/patterns
 /**
  * Tests de la conversion de markers a lightweight-charts.
  *
- * Es la unica logica de `PatternChart` que puede fallar sin lanzar excepcion:
+ * Es la unica logica de `prepareMarkers` que puede fallar sin lanzar excepcion:
  * `setMarkers` acepta un array desordenado y simplemente no pinta nada, asi que
  * un error aqui se manifiesta como "el grafico no muestra detecciones" y es
  * dificil de diagnosticar. El caso del orden descendente es real, porque

@@ -1,3 +1,4 @@
+import type { IndicatorAvailabilityList } from "../types/chart";
 import axios from "axios";
 
 import type {
@@ -80,5 +81,23 @@ export async function requeueFeatureJob(jobId: string): Promise<FeatureJobRespon
 
 export async function getAvailableData(): Promise<{ symbol: string; timeframe: string }[]> {
   const { data } = await apiClient.get<{ symbol: string; timeframe: string }[]>(`/data/available`);
+  return data;
+}
+
+/**
+ * Indicadores ya calculados para un par, con su cobertura real.
+ *
+ * El explorador lo usa para poblar el selector, y la parte que importa no es la
+ * lista sino el **rango** de cada uno: `EMA_50` existe para BTCUSDT pero solo
+ * desde julio de 2026, y ofrecerlo en un rango de 2022 hace que el usuario
+ * descubra la falta cuando ya esta mirando el grafico.
+ */
+export async function getIndicatorAvailability(
+  symbol: string,
+  timeframe: string,
+): Promise<IndicatorAvailabilityList> {
+  const { data } = await apiClient.get<IndicatorAvailabilityList>("/data/indicators", {
+    params: { symbol, timeframe },
+  });
   return data;
 }

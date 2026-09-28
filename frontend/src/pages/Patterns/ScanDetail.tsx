@@ -7,7 +7,8 @@ import { ProgressBar } from "../../components/Features/ProgressBar";
 import { LogViewer } from "../../components/Patterns/LogViewer";
 import { OccurrenceTable } from "../../components/Patterns/OccurrenceTable";
 import { PatternBreakdown } from "../../components/Patterns/PatternBreakdown";
-import { PatternChart } from "../../components/Patterns/PatternChart";
+import { UnifiedChart } from "../../components/charts/UnifiedChart";
+import { toChartRows } from "../../components/charts/chartData";
 import { summarizeOccurrences } from "../../components/Patterns/patternUtils";
 import { StatusBadge } from "../../components/ui/StatusBadge";
 import {
@@ -51,6 +52,12 @@ export default function ScanDetail() {
   const [occurrenceTotal, setOccurrenceTotal] = useState(0);
   const [occPage, setOccPage] = useState(1);
   const [chart, setChart] = useState<PatternChartData | null>(null);
+  /**
+   * Conversion a filas del grafico unificado. La respuesta de `/scans/{id}/chart`
+   * y la de `/patterns/chart` comparten forma, asi que el adaptador sirve para
+   * las dos.
+   */
+  const chartRows = useMemo(() => (chart ? toChartRows(chart) : []), [chart]);
   const [chartError, setChartError] = useState<string | null>(null);
   const [catalog, setCatalog] = useState<PatternDefinition[]>([]);
   const [wsConnected, setWsConnected] = useState(false);
@@ -541,12 +548,11 @@ export default function ScanDetail() {
             </p>
           )}
           {chart ? (
-            <PatternChart
-              candles={chart.candles}
-              indicators={chart.indicators}
+            <UnifiedChart
+              rows={chartRows}
               markers={chart.markers}
-              symbol={chart.symbol}
-              timeframe={chart.timeframe}
+              title={`${chart.symbol} · ${chart.timeframe}`}
+              subtitle={`${chart.returned.toLocaleString("es-ES")} velas`}
               highlightTimestamp={highlight}
             />
           ) : (

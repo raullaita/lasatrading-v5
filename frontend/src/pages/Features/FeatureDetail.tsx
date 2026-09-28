@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { Ban, Database, Loader2, Plus, Send, Trash2 } from "lucide-react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 
-import { FeatureChart } from "../../components/Features/FeatureChart";
+import { UnifiedChart } from "../../components/charts/UnifiedChart";
+import { fromPreviewRows } from "../../components/charts/chartData";
 import { IndicatorList } from "../../components/Features/IndicatorList";
 import { LogViewer } from "../../components/Features/LogViewer";
 import { PreviewModal } from "../../components/Features/PreviewModal";
@@ -30,6 +31,12 @@ export default function FeatureDetail() {
   const [job, setJob] = useState<FeatureJobResponse | null>(null);
   const [logs, setLogs] = useState<FeatureLog[]>([]);
   const [previewData, setPreviewData] = useState<FeaturePreviewRow[]>([]);
+  /**
+   * El merge de filas por timestamp lo hacia el antiguo `FeatureChart` dentro
+   * del componente, sin un solo test. Ahora vive en `fromPreviewRows`, que es
+   * pura y esta probada, y aqui solo se memoriza.
+   */
+  const previewRows = useMemo(() => fromPreviewRows(previewData), [previewData]);
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [wsConnected, setWsConnected] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -328,7 +335,11 @@ export default function FeatureDetail() {
                   {previewError}
                 </p>
               )}
-              <FeatureChart data={previewData} symbol={job.symbol} timeframe={job.timeframe} />
+              <UnifiedChart
+                rows={previewRows}
+                title={`${job.symbol} · ${job.timeframe}`}
+                subtitle={`${previewData.length.toLocaleString("es-ES")} velas con los indicadores del job`}
+              />
             </div>
           )}
         </div>

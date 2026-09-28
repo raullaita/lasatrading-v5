@@ -22,6 +22,7 @@ import ImportDetail from "./pages/DataImport/ImportDetail";
 import ImportList from "./pages/DataImport/ImportList";
 import NewImport from "./pages/DataImport/NewImport";
 import DataExplorer from "./pages/DataExplorer/DataExplorer";
+import DataExplorerChart from "./pages/DataExplorer/DataExplorerChart";
 
 // Las cuatro páginas de patrones van en carga diferida. Suman unos 67 kB y
 // ninguna hace falta en el primer render: quien entra por el panel de Welcome
@@ -58,7 +59,8 @@ function RouteFallback() {
 const navItems = [
   { to: "/", label: "Inicio", icon: LayoutDashboard },
   { to: "/import", label: "Importación", icon: Database },
-  { to: "/data", label: "Explorador de Datos", icon: TableProperties },
+  { to: "/data", label: "Datos", icon: TableProperties },
+  { to: "/data-explorer", label: "Explorador de Gráficos", icon: LineChart },
   { to: "/features", label: "Indicadores", icon: LineChart },
   { to: "/patterns", label: "Patrones", icon: ScanSearch },
   { to: "/backtesting", label: "Backtesting", icon: Activity },
@@ -181,6 +183,7 @@ export default function App() {
           <Route path="/import/new" element={<NewImport />} />
           <Route path="/import/:jobId" element={<ImportDetail />} />
           <Route path="/data" element={<DataExplorer />} />
+          <Route path="/data-explorer" element={<DataExplorerChart />} />
           <Route path="/features" element={<FeatureList />} />
           <Route path="/features/new" element={<NewFeatureJob />} />
           <Route path="/features/:jobId" element={<FeatureDetail />} />

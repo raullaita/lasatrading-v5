@@ -1,5 +1,6 @@
 import axios from "axios";
 
+import type { ChartData, ChartParams } from "../types/chart";
 import type {
   OccurrenceListOut,
   OccurrenceSummary,
@@ -252,5 +253,26 @@ export async function getOccurrencesSummary(
   const { data } = await apiClient.get<OccurrenceSummary>("/occurrences/summary", {
     params: { ...rest, patterns: csv(rest.patterns) },
   });
+  return data;
+}
+
+/**
+ * Grafico de velas + indicadores, **sin necesidad de un escaneo**.
+ *
+ * Es la ruta que consume el explorador de datos: con simbolo, timeframe y rango
+ * sale el grafico aunque no se haya creado nunca un job de features ni un
+ * escaneo. Los indicadores que se superponen son los que ya estan calculados en
+ * la base; esta ruta no calcula ninguno.
+ *
+ * `scan` es opcional y controla los markers: sin el, la lista viene vacia, que
+ * es lo correcto porque no se puede marcar lo que no se ha escaneado.
+ *
+ * `timeout` sube a 60 s frente a los 30 s del cliente de este modulo. Con `max_points` a 5.000
+ * velas la respuesta son 5.000 velas y hasta diez series de indicadores, y
+ * con el tope por defecto el error se manifestaria como un fallo de red, que
+ * es el sintoma equivocado para un problema de tamaño.
+ */
+export async function getChartData(params: ChartParams): Promise<ChartData> {
+  const { data } = await apiClient.get<ChartData>("/chart", { params, timeout: 60000 });
   return data;
 }

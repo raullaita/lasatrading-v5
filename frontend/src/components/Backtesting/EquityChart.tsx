@@ -30,9 +30,15 @@ const THEME_COLORS = {
 /**
  * Curva de equity de un run.
  *
- * Usa el mismo `createChart` que `PatternChart` (lightweight-charts no admite
- * reuso del mismo chart), pero con una serie de líneas y sin velas: aqui no
- * hay ohclv, solo el capital por vela simulado. El `equity` llega como string
+ * Usa el mismo `createChart` que `UnifiedChart` (lightweight-charts no admite
+ * reuso de una instancia tras `remove()`, asi que hay un chart por montaje), pero
+ * con una serie de lineas y sin velas: aqui no hay ohclv, solo el capital por
+ * vela simulado.
+ *
+ * Se queda **fuera** del grafico unificado a proposito. Es un grafico de una
+ * sola serie sobre el tiempo, sin velas ni markers, y meterlo en un componente
+ * que resuelve overlays e indicadores seria forzar el caso comun para encajar un
+ * caso distinto. El `equity` llega como string
  * (Decimal) y la linea se pinta con los extremos recortados — un run sobre
  * mil velas renderizado a 100 puntos se ve igual que uno corto, que es justo
  * lo que interesa del progreso.
