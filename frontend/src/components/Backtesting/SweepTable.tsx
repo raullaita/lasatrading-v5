@@ -1,5 +1,6 @@
-import type { SweepPoint } from "../../types/backtesting";
+import type { BacktestBenchmark, SweepPoint } from "../../types/backtesting";
 import {
+  formatDelta,
   formatMoney,
   formatPctPlain,
   formatPercent,
@@ -36,12 +37,17 @@ function nivel(value: string | null): string {
 
 export function SweepTable({
   points,
+  benchmark,
   onApply,
 }: {
   points: SweepPoint[];
+  /** Mismo numero para todas las filas: el rango no cambia con la rejilla. */
+  benchmark?: BacktestBenchmark | null;
   /** Lanza un nuevo run con esta combinacion. */
   onApply?: (point: SweepPoint) => void;
 }) {
+  const mercado = toNumber(benchmark?.total_return_pct);
+
   if (points.length === 0) {
     return (
       <p className="py-6 text-center text-xs text-slate-400 dark:text-slate-500">
@@ -64,6 +70,7 @@ export function SweepTable({
             <th className="px-4 py-2.5 text-right">Retorno</th>
             <th className="px-4 py-2.5 text-right">DD máx.</th>
             <th className="px-4 py-2.5 text-right">Sharpe</th>
+            <th className="px-4 py-2.5 text-right">vs mercado</th>
             <th className="px-4 py-2.5">Salidas</th>
             {onApply && <th className="px-4 py-2.5" />}
           </tr>
@@ -112,6 +119,19 @@ export function SweepTable({
                 <td className="px-4 py-2 text-right">{formatPercent(point.total_return_pct)}</td>
                 <td className="px-4 py-2 text-right">{formatPercent(point.max_drawdown_pct)}</td>
                 <td className="px-4 py-2 text-right">{formatPctPlain(point.sharpe_ratio)}</td>
+                <td
+                  className={
+                    mercado === null
+                      ? "px-4 py-2 text-right"
+                      : (toNumber(point.total_return_pct) ?? 0) - mercado > 0
+                        ? "px-4 py-2 text-right font-medium text-emerald-600 dark:text-emerald-400"
+                        : "px-4 py-2 text-right text-rose-600 dark:text-rose-400"
+                  }
+                >
+                  {mercado === null
+                    ? "—"
+                    : formatDelta((toNumber(point.total_return_pct) ?? 0) - mercado)}
+                </td>
                 <td className="px-4 py-2 text-xs text-slate-500 dark:text-slate-400">
                   {Object.entries(point.exits)
                     .map(([motivo, cuenta]) => `${EXIT_LABELS[motivo] ?? motivo} ${cuenta}`)

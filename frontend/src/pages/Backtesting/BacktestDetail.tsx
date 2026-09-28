@@ -4,6 +4,7 @@ import { Ban, Loader2, Send, Trash2 } from "lucide-react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 
 import { BacktestLogViewer } from "../../components/Backtesting/BacktestLogViewer";
+import { BenchmarkRow } from "../../components/Backtesting/BenchmarkRow";
 import { CalibrationSection } from "../../components/Backtesting/CalibrationSection";
 import { EquityChart } from "../../components/Backtesting/EquityChart";
 import { SortableTh } from "../../components/ui/SortableTh";
@@ -25,6 +26,7 @@ import {
   BACKTEST_TERMINAL_STATUSES,
   EXIT_REASON_LABELS,
   type BacktestAnalysis,
+  type BacktestBenchmark,
   type BacktestEquitySeries,
   type BacktestLog,
   type BacktestRunResponse,
@@ -83,6 +85,7 @@ export default function BacktestDetail() {
   const [tradeSortOrder, setTradeSortOrder] = useState<"asc" | "desc">("desc");
   const [analysis, setAnalysis] = useState<BacktestAnalysis | null>(null);
   const [sweep, setSweep] = useState<SweepPoint[]>([]);
+  const [sweepBenchmark, setSweepBenchmark] = useState<BacktestBenchmark | null>(null);
   const [sweeping, setSweeping] = useState(false);
   const [sweepError, setSweepError] = useState<string | null>(null);
   const [wsConnected, setWsConnected] = useState(false);
@@ -202,7 +205,10 @@ export default function BacktestDetail() {
       setSweepError(null);
       try {
         const data = await sweepBacktest(runId, grid);
-        if (!disposedRef.current) setSweep(data.points);
+        if (!disposedRef.current) {
+          setSweep(data.points);
+          setSweepBenchmark(data.benchmark);
+        }
       } catch {
         if (!disposedRef.current) {
           setSweepError("No se pudo completar el barrido de parámetros.");
@@ -497,6 +503,12 @@ export default function BacktestDetail() {
           />
         </div>
 
+        {summary && (
+          <div className="mb-6">
+            <BenchmarkRow run={run} benchmark={summary.benchmark} />
+          </div>
+        )}
+
         <div className="mb-6">
           <BacktestLogViewer logs={logs} />
           {!wsConnected && logs.length > 0 && finished && (
@@ -512,6 +524,7 @@ export default function BacktestDetail() {
             onSweep={onSweep}
             onApply={onApplySweep}
             sweep={sweep}
+            benchmark={sweepBenchmark}
             sweeping={sweeping}
             sweepError={sweepError}
           />

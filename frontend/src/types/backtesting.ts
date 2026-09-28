@@ -235,6 +235,8 @@ export interface BacktestSummary {
   total_signals: number;
   by_pattern: BacktestPatternBreakdown[];
   by_exit_reason: BacktestExitReasonBreakdown[];
+  /** `null` si el escaneo de origen ya no existe. */
+  benchmark: BacktestBenchmark | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -324,6 +326,27 @@ export interface PatternCalibration {
   warnings: string[];
 }
 
+/**
+ * `BacktestBenchmarkOut`: comprar y mantener durante el rango del escaneo.
+ *
+ * Es la cifra que hace legibles todas las demas. Sin ella, un -3% y un +38%
+ * pueden ser la misma estrategia en el mismo mercado: lo que los separa es que
+ * el mercado hizo +69%, y las dos versiones pierden dinero en comisiones. El
+ * backend entra al open de la primera vela y sale al close de la ultima, que
+ * es la mejor entrada posible para quien no opera.
+ */
+export interface BacktestBenchmark {
+  candles: number;
+  initial_capital: string;
+  entry_price: string | null;
+  final_price: string | null;
+  equity_final: string | null;
+  net_pnl: string | null;
+  total_return_pct: string | null;
+  max_drawdown_pct: string | null;
+  sharpe_ratio: string | null;
+}
+
 /** `BacktestAnalysisOut`. */
 export interface BacktestAnalysis {
   run_id: string;
@@ -374,6 +397,8 @@ export interface SweepPoint {
 export interface BacktestSweep {
   run_id: string;
   strategy: BacktestRunResponse;
+  /** Constante de la fila: la rejilla no cambia de rango. */
+  benchmark: BacktestBenchmark | null;
   points: SweepPoint[];
   requested: number;
   simulated: number;

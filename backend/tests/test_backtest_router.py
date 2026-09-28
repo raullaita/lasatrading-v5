@@ -556,3 +556,39 @@ def test_una_rejilla_sin_la_estrategia_del_run_no_marca_ninguna_fila(
 
     assert respuesta.status_code == 200, respuesta.text
     assert sum(p["is_baseline"] for p in respuesta.json()["points"]) == 0
+
+
+def test_el_resumen_trae_el_benchmark_de_mercado(client, service, db, scan_job):
+    """Sin esta cifra, la tarjeta de metricas no es interpretable: los mismos
+    numeros significan cosas distintas en un mercado que subio y en uno que bajo.
+    Va dentro del resumen para no añadir una cuarta peticion al cargar la pagina."""
+    run = crear(service, db, scan_job, max_hold=6)
+    service.execute_run(run.id)
+    db.expire_all()
+
+    cuerpo = client.get(f"{PREFIX}/{run.id}/summary").json()
+
+    assert cuerpo["benchmark"] is not None
+    assert cuerpo["benchmark"]["candles"] == 60
+    assert float(cuerpo["benchmark"]["total_return_pct"]) > 0
+    assert cuerpo["benchmark"]["initial_capital"] is not None
+
+
+def test_el_barrido_trae_el_benchmark_para_comparar_las_filas(
+    client, service, db, scan_job
+):
+    """Todas las filas de la rejilla compiten contra el mismo mercado, asi que
+    el benchmark viaja una vez en la respuesta y la tabla lo pinta como
+    referencia, no repetido en cada celda."""
+    run = crear(service, db, scan_job, max_hold=6)
+    service.execute_run(run.id)
+    db.expire_all()
+
+    cuerpo = client.post(
+        f"{PREFIX}/{run.id}/sweep",
+        json={"take_profit_pcts": [3.0], "stop_loss_pcts": [3.0], "max_holds": [6]},
+    ).json()
+
+    assert cuerpo["benchmark"] is not None
+    assert "total_return_pct" in cuerpo["benchmark"]
+    assert "max_drawdown_pct" in cuerpo["benchmark"]

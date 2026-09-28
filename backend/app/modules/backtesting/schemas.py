@@ -210,6 +210,9 @@ class BacktestSummaryOut(BaseModel):
     total_signals: int
     by_pattern: list[BacktestPatternBreakdownOut]
     by_exit_reason: list[BacktestExitReasonOut]
+    #: Lo que habria dado no operar. Sin esta cifra, las metricas de la run
+    #: no son interpretables: dependen de como se movio el mercado.
+    benchmark: BacktestBenchmarkOut | None = None
 
 
 class BacktestLogOut(BaseModel):
@@ -310,6 +313,35 @@ class PatternCalibrationOut(BaseModel):
     warnings: list[str] = Field(default_factory=list)
 
 
+class BacktestBenchmarkOut(BaseModel):
+    """Comprar y mantener durante el rango del escaneo.
+
+    Viaja en el resumen y en el barrido, no en un endpoint aparte, por una
+    razon de la propia naturaleza del dato: es **el mismo numero** para el
+    run, para cada patron y para cada fila de la rejilla, porque el rango de
+    velas lo fija el escaneo de origen. Pedirlo aparte seria hacer tres
+    peticiones para devolver siempre lo mismo, con el riesgo de que cada copia
+    difiera un dia y las tres acaben en pantalla a la vez.
+
+    Con ``candles == 0`` todos los valores vienen a ``null`` y no hay nada que
+    comparar: la UI lo dice en vez de enseñar un 0% que parece un mercado plano.
+    """
+
+    candles: int
+    initial_capital: Decimal
+    entry_price: Decimal | None = None
+    final_price: Decimal | None = None
+    equity_final: Decimal | None = None
+    net_pnl: Decimal | None = None
+    total_return_pct: Decimal | None = None
+    max_drawdown_pct: Decimal | None = None
+    sharpe_ratio: Decimal | None = None
+
+    @property
+    def available(self) -> bool:
+        return self.candles > 0 and self.total_return_pct is not None
+
+
 class BacktestAnalysisOut(BaseModel):
     """Analisis completo de un run.
 
@@ -394,6 +426,9 @@ class BacktestSweepOut(BaseModel):
 
     run_id: UUID
     strategy: BacktestRunOut
+    #: Constante de la fila, no de cada combinacion: la rejilla no cambia de
+    #: rango, asi que todas las filas se miden contra el mismo mercado.
+    benchmark: BacktestBenchmarkOut | None = None
     points: list[SweepPointOut] = Field(default_factory=list)
     #: Combinaciones pedidas y simuladas. Difieren cuando alguna celda de la
     #: rejilla era invalida (los dos niveles a null, por ejemplo) y se explicita

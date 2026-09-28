@@ -362,7 +362,7 @@ def run_backtest(
     if free_from < n:
         curve[free_from:] = equity
 
-    result.equity = _build_equity(index, curve)
+    result.equity = build_equity_curve(index, curve)
     result.metrics = _metrics(result.trades, result.equity, config)
     return result
 
@@ -393,12 +393,20 @@ def _empty_equity(candles: pd.DataFrame, capital: float) -> pd.DataFrame:
             },
             index=pd.DatetimeIndex([], tz="UTC", name="timestamp"),
         )
-    return _build_equity(
+    return build_equity_curve(
         candles.index, np.full(len(candles), float(capital), dtype=float)
     )
 
 
-def _build_equity(index: pd.DatetimeIndex, curve: np.ndarray) -> pd.DataFrame:
+def build_equity_curve(index: pd.DatetimeIndex, curve: np.ndarray) -> pd.DataFrame:
+    """Curva de capital por vela, con su drawdown respecto al maximo alcanzado.
+
+    Vive aqui y no en el modulo de analisis, que tambien la necesita para medir
+    al mercado, **a proposito**: el drawdown de la estrategia y el del buy & hold
+    tienen que salir de la misma linea. Con dos copias del calculo, un dia
+    cambia una y la comparacion de la tarjeta empieza a decir que la estrategia
+    tiene menos drawdown que el mercado cuando en realidad mide otra cosa.
+    """
     peak = np.maximum.accumulate(curve)
     with np.errstate(divide="ignore", invalid="ignore"):
         drawdown = np.where(peak > 0, (peak - curve) / peak * 100, 0.0)
@@ -449,12 +457,16 @@ def _metrics(
             float(equity["drawdown_pct"].max()) if len(equity) else 0.0
         ),
         "avg_bars_held": (sum(bars) / len(bars)) if bars else None,
-        "sharpe_ratio": _sharpe(equity),
+        "sharpe_ratio": sharpe_ratio(equity),
     }
 
 
-def _sharpe(equity: pd.DataFrame) -> float | None:
+def sharpe_ratio(equity: pd.DataFrame) -> float | None:
     """Sharpe de los retornos por vela, anualizado con la mediana del intervalo.
+
+    Acepta cualquier frame con ``equity`` e indice de tiempo, no solo el
+    resultado del motor: el benchmark de mercado lo usa con la serie de cierres
+    del mismo rango, y es justo que las dos cifras sean comparables.
 
     Se anualiza con la frecuencia **infernada de los datos** (mediana de la
     separacion entre velas) y no con un diccionario de timeframes: asi el

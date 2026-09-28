@@ -49,6 +49,7 @@ from app.modules.backtesting.analysis import (
     SweepGrid,
     SweepPoint,
     TradeSample,
+    buy_and_hold,
     calibrate_run,
     sweep,
 )
@@ -68,6 +69,7 @@ from app.modules.backtesting.models import (
 )
 from app.modules.backtesting.schemas import (
     BacktestAnalysisOut,
+    BacktestBenchmarkOut,
     BacktestCreateIn,
     BacktestEquitySeriesOut,
     BacktestExitReasonOut,
@@ -711,6 +713,7 @@ class BacktestService:
             total_signals=self._count_signals(db, run, strategy_filters(run.strategy)),
             by_pattern=self.get_trades_by_pattern(db, run_id),
             by_exit_reason=self._get_by_exit_reason(db, run_id),
+            benchmark=self.get_run_benchmark(db, run),
         )
 
     def _count_signals(self, db: Session, run: BacktestRun, filters: RunFilters) -> int:
@@ -853,6 +856,28 @@ class BacktestService:
 
     # ----------------------------------------------------- analisis y barrido
 
+    def get_run_benchmark(
+        self, db: Session, run: BacktestRun
+    ) -> BacktestBenchmarkOut | None:
+        """Lo que habria dado comprar y mantener en el rango del escaneo.
+
+        Sale de las **velas**, no de las operaciones: la pregunta es que hizo el
+        mercado mientras la estrategia estaba operando, y el rango lo hereda del
+        escaneo de origen, no de los trades. Un benchmark construido sobre las
+        operaciones mediria otra cosa (cuanto gano la estrategia sin operar) y
+        daria justo el numero que la estrategia quiere demostrar.
+
+        Cada consumidor lo pide una vez, y el barrido lo calcula con las velas
+        que ya tiene en memoria, así que una peticion no relee el rango.
+        """
+        scan = db.get(PatternScanJob, run.scan_job_id)
+        if scan is None:
+            return None
+        candles = load_candles(
+            scan.symbol, scan.timeframe, scan.date_from, scan.date_to
+        )
+        return _benchmark_out(buy_and_hold(candles, float(run.initial_capital)))
+
     def get_run_analysis(self, db: Session, run_id: uuid.UUID) -> BacktestAnalysisOut:
         """Percentiles de MAE/MFE por patron, con propuesta teorica de TP y SL.
 
@@ -930,6 +955,8 @@ class BacktestService:
             )
 
         base = StrategyConfig(**strategy_params(run.strategy))
+        # Las velas ya estan en memoria: el benchmark sale de aqui y no de una
+        # segunda consulta identica.
         grid = SweepGrid(
             take_profit_pcts=tuple(body.take_profit_pcts),
             stop_loss_pcts=tuple(body.stop_loss_pcts),
@@ -942,6 +969,7 @@ class BacktestService:
         return BacktestSweepOut(
             run_id=run.id,
             strategy=BacktestRunOut.model_validate(run),
+            benchmark=_benchmark_out(buy_and_hold(candles, float(run.initial_capital))),
             points=[_sweep_out(point) for point in points],
             requested=grid.combinations(),
             simulated=len(points),
@@ -1017,6 +1045,20 @@ def strategy_filters(payload: dict) -> RunFilters:
     return RunFilters(
         patterns=tuple(patterns) if patterns else None,
         directions=tuple(directions) if directions else None,
+    )
+
+
+def _benchmark_out(benchmark) -> BacktestBenchmarkOut:
+    return BacktestBenchmarkOut(
+        candles=benchmark.candles,
+        initial_capital=_decimal(benchmark.initial_capital) or Decimal(0),
+        entry_price=_decimal(benchmark.entry_price),
+        final_price=_decimal(benchmark.final_price),
+        equity_final=_decimal(benchmark.equity_final),
+        net_pnl=_decimal(benchmark.net_pnl),
+        total_return_pct=_decimal(benchmark.total_return_pct),
+        max_drawdown_pct=_decimal(benchmark.max_drawdown_pct),
+        sharpe_ratio=_decimal(benchmark.sharpe_ratio),
     )
 
 

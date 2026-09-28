@@ -807,7 +807,7 @@ def test_sharpe_se_anualiza_por_velas_horarias() -> None:
     divide el factor entre mil millones y devuelve un 0.00 que parece un cero
     y oculta una estrategia que pierde el 24%.
     """
-    from app.modules.backtesting.engine import _sharpe
+    from app.modules.backtesting.engine import sharpe_ratio
 
     index = pd.date_range(START, periods=4, freq="h", tz="UTC", name="timestamp")
     equity = pd.DataFrame({"equity": [100.0, 100.0, 100.0, 110.0]}, index=index)
@@ -819,5 +819,5 @@ def test_sharpe_se_anualiza_por_velas_horarias() -> None:
     ) ** 0.5  # ddof=1 sobre 3 observaciones
     esperado = media / desviacion * (365 * 24) ** 0.5  # 8760 periodos al año
 
-    assert _sharpe(equity) == pytest.approx(esperado)
-    assert _sharpe(equity) > 50, "un +10% en tres horas sale enorme, no 0.00"
+    assert sharpe_ratio(equity) == pytest.approx(esperado)
+    assert sharpe_ratio(equity) > 50, "un +10% en tres horas sale enorme, no 0.00"

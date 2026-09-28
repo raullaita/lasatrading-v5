@@ -19,6 +19,8 @@ son de confundir ese techo con una oportunidad de mercado.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -28,6 +30,7 @@ from app.modules.backtesting.analysis import (
     AnalysisError,
     SweepGrid,
     TradeSample,
+    buy_and_hold,
     calibrate_pattern,
     calibrate_run,
     histogram,
@@ -796,3 +799,116 @@ def test_el_barrido_es_determinista():
     segundo = sweep(velas, senales, base, grid)
 
     assert primero == segundo
+
+
+# ---------------------------------------------------------------------------
+# Benchmark de mercado
+# ---------------------------------------------------------------------------
+def _mercado(
+    cierres: Sequence[float], aperturas: Sequence[float] | None = None
+) -> pd.DataFrame:
+    """Velas con los cierres dados, a 1 hora, con la entrada al open de la primera."""
+    index = pd.date_range(
+        "2024-01-01", periods=len(cierres), freq="h", tz="UTC", name="timestamp"
+    )
+    return pd.DataFrame(
+        {
+            "open": list(aperturas or cierres),
+            "high": [c * 1.001 for c in cierres],
+            "low": [c * 0.999 for c in cierres],
+            "close": list(cierres),
+        },
+        index=index,
+    ).astype(float)
+
+
+def test_el_benchmark_entra_al_open_de_la_primera_vela():
+    """La entrada es la mejor posible para quien no opera: antes de que la
+    estrategia pueda abrir su primera posicion.
+
+    Aqui se ve: el open de la primera vela es 200 y el close de la ultima 110,
+    asi que el benchmark pierde un 45% aunque el close de la primera fuera 200 y
+    el open de la ultima 110. Los dos rigs darian -45%; la diferencia esta en
+    cual de los dos se elige, y elegir el mas favorable para el benchmark es lo
+    que hace que superarlo signifique algo.
+    """
+    velas = _mercado(
+        cierres=[200.0, 160.0, 110.0],
+        aperturas=[200.0, 170.0, 120.0],
+    )
+
+    resultado = buy_and_hold(velas, 1000.0)
+
+    assert resultado.entry_price == 200.0
+    assert resultado.total_return_pct == pytest.approx(-45.0)
+
+
+def test_el_benchmark_sale_al_close_de_la_ultima_vela():
+    velas = _mercado([100.0, 150.0, 120.0], aperturas=[100.0, 140.0, 130.0])
+
+    resultado = buy_and_hold(velas, 1000.0)
+
+    assert resultado.final_price == 120.0
+    assert resultado.total_return_pct == pytest.approx(20.0)
+    assert resultado.equity_final == pytest.approx(1200.0)
+    assert resultado.net_pnl == pytest.approx(200.0)
+
+
+def test_el_benchmark_arrastra_el_capital_inicial_del_run():
+    """Con el mismo capital que la estrategia, los dos retornos son comparables
+    sin tener que convertir nada. Si el benchmark empezara en 1, sus numeros
+    serian fracciones y alguien acabaria pintando +0,43 donde va +43."""
+    velas = _mercado([100.0, 200.0, 200.0])
+
+    resultado = buy_and_hold(velas, 5000.0)
+
+    assert resultado.initial_capital == 5000.0
+    assert resultado.equity_final == pytest.approx(10000.0)
+    assert resultado.total_return_pct == pytest.approx(100.0)
+
+
+def test_el_drawdown_del_benchmark_usa_la_misma_regla_que_el_de_la_estrategia():
+    """El drawdown es (maximo - actual) / maximo, en porcentaje, sobre la serie
+    de capital. Si el benchmark lo midiera de otra forma, la comparacion de la
+    tarjeta seria entre dos cosas distintas.
+
+    100 -> 120 -> 60 -> 90: el pico es 120 y la caida a 60 es del 50%.
+    """
+    velas = _mercado([100.0, 120.0, 60.0, 90.0])
+
+    resultado = buy_and_hold(velas, 1000.0)
+
+    assert resultado.max_drawdown_pct == pytest.approx(50.0)
+
+
+def test_sin_velas_no_se_inventa_un_mercado_plano():
+    """Cero velas no es un mercado que hizo 0%: es que no hay mercado. La UI lo
+    distingue con ``candles`` y no tiene que adivinarlo por un 0."""
+    resultado = buy_and_hold(_mercado([]), 1000.0)
+
+    assert resultado.candles == 0
+    assert resultado.total_return_pct is None
+    assert resultado.max_drawdown_pct is None
+    assert resultado.sharpe_ratio is None
+
+
+def test_con_dos_velas_no_hay_varianza_que_estimar():
+    """El Sharpe necesita al menos tres puntos. Con dos, devolveria un numero
+    construido sobre una division por una varianza que no existe."""
+    resultado = buy_and_hold(_mercado([100.0, 150.0]), 1000.0)
+
+    assert resultado.candles == 2
+    assert resultado.sharpe_ratio is None
+    assert resultado.total_return_pct == pytest.approx(50.0)
+
+
+def test_el_benchmark_de_un_mercado_que_sube_es_el_que_se_sospecha():
+    """La situacion que motivo todo el modulo: un tramo alcista fuerte donde una
+    estrategia de reversion media pierde dinero y otra de mantener gana. Sin el
+    benchmark, la segunda parece un hallazgo y la primera parece un desastre."""
+    velas = _mercado([100.0 + i for i in range(30)])
+
+    resultado = buy_and_hold(velas, 1000.0)
+
+    assert resultado.total_return_pct > 25
+    assert resultado.max_drawdown_pct is not None

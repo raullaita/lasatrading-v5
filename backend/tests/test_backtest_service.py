@@ -38,6 +38,7 @@ from app.modules.backtesting.service import (
     strategy_filters,
     strategy_params,
 )
+from app.modules.patterns.models import PatternScanJob
 from sqlalchemy import func, select
 
 pytestmark = pytest.mark.filterwarnings("error::RuntimeWarning")
@@ -1020,3 +1021,95 @@ def test_el_analisis_trae_la_poblacion_libre_agrupada_del_run(
         assert float(analisis.pooled_mfe.maximum) == pytest.approx(
             max(float(t.mfe) * 100 for t in libres if t.mfe is not None), abs=0.01
         )
+
+
+# ---------------------------------------------------------------------------
+# Benchmark de mercado
+# ---------------------------------------------------------------------------
+def test_el_benchmark_usa_las_velas_del_rango_del_escaneo(
+    db, service, run_con_operaciones
+):
+    """El benchmark se construye sobre las velas del escaneo, no sobre las
+    operaciones: lo que se quiere saber es que hizo el mercado mientras la
+    estrategia operaba. Construido sobre los trades daria "cuanto gano la
+    estrategia sin operar", que es justo el numero que la estrategia quiere
+    demostrar."""
+    benchmark = service.get_run_benchmark(db, run_con_operaciones)
+
+    assert benchmark is not None
+    assert benchmark.candles == 60, "una vela por fila, como el fixture"
+    assert benchmark.initial_capital == run_con_operaciones.initial_capital
+
+
+def test_el_benchmark_del_fixture_es_una_pendiente_suave_y_ganadora(
+    db, service, run_con_operaciones
+):
+    """El fixture es una rampa siempre al alza, asi que el mercado sube y el
+    benchmark tiene que salir positivo. Un benchmark negativo aqui seria la
+    senal de que la curva esta invertida o de que se esta midiendo el rango al
+    reves."""
+    benchmark = service.get_run_benchmark(db, run_con_operaciones)
+
+    assert benchmark.total_return_pct > 0
+    assert benchmark.final_price > benchmark.entry_price
+    # La rampa va de 100,00 (open de la primera) a 103,05 (close de la ultima):
+    # 3,05% en 60 horas. Se comparan como ``float`` porque el contrato los
+    # devuelve como ``Decimal`` y ``Decimal - float`` lanza TypeError.
+    assert float(benchmark.total_return_pct) == pytest.approx(3.05, abs=0.005)
+    assert float(benchmark.max_drawdown_pct) == pytest.approx(0.0, abs=0.01)
+
+
+def test_el_resumen_trae_el_benchmark(db, service, run_con_operaciones):
+    """Va en el resumen y no en un endpoint aparte porque es el mismo numero
+    para el run, para cada patron y para cada fila del barrido: pedirlo aparte
+    seria tres peticiones para devolver siempre lo mismo."""
+    resumen = service.get_run_summary(db, run_con_operaciones.id)
+
+    assert resumen.benchmark is not None
+    assert resumen.benchmark.candles == 60
+    assert resumen.benchmark.available is True
+
+
+def test_el_barrido_trae_el_benchmark_y_es_el_mismo_que_el_del_resumen(
+    db, service, run_con_operaciones
+):
+    """Las filas de la rejilla se comparan todas contra este numero, asi que
+    tiene que ser identico al del resumen. Si salieran distintos, dos pantallas
+    de la misma pagina estarian midiendo mercados distintos."""
+    resumen = service.get_run_summary(db, run_con_operaciones.id)
+    barrido = service.sweep_run(
+        db,
+        run_con_operaciones.id,
+        SweepGridIn(take_profit_pcts=[3.0], stop_loss_pcts=[3.0], max_holds=[6]),
+    )
+
+    assert barrido.benchmark is not None
+    assert barrido.benchmark.total_return_pct == resumen.benchmark.total_return_pct
+    assert barrido.benchmark.candles == resumen.benchmark.candles
+
+
+def test_el_benchmark_de_un_run_sin_escaneo_origen_no_revienta(
+    db, service, run_con_operaciones
+):
+    """El escaneo de origen puede haberse borrado. El benchmark se cae a
+    ``None`` y la tarjeta se queda sin referencia, en vez de un 500."""
+    db.delete(db.get(PatternScanJob, run_con_operaciones.scan_job_id))
+    db.commit()
+
+    assert service.get_run_benchmark(db, run_con_operaciones) is None
+
+
+def test_el_benchmark_no_afecta_al_barrido_ni_al_run(db, service, run_con_operaciones):
+    """El barrido sigue siendo una pregunta: leer el rango del escaneo no crea
+    ni borra nada."""
+    operaciones = db.scalar(select(func.count()).select_from(BacktestTrade))
+    runs = db.scalar(select(func.count()).select_from(BacktestRun))
+
+    service.sweep_run(
+        db,
+        run_con_operaciones.id,
+        SweepGridIn(take_profit_pcts=[3.0], stop_loss_pcts=[3.0], max_holds=[6]),
+    )
+
+    assert db.scalar(select(func.count()).select_from(BacktestTrade)) == operaciones
+    assert db.scalar(select(func.count()).select_from(BacktestRun)) == runs

@@ -80,3 +80,22 @@ export function formatPctPlain(value: number | string | null | undefined): strin
   if (n === null) return "—";
   return n.toLocaleString("es-ES", { maximumFractionDigits: 2 });
 }
+
+/**
+ * Puntos porcentuales de diferencia entre el retorno de la estrategia y el del
+ * mercado: `formatDelta(+3.5)` -> `+3,50 pp`.
+ *
+ * El signo va delante siempre, y el sufijo es "pp" (puntos porcentuales) y no
+ * "%", porque la diferencia entre dos porcentajes no es un porcentaje: un +20%
+ * contra un +44% no es "un 24% de diferencia", son 24 puntos. Confundir las dos
+ * medidas es el error mas facil de cometer al enseñar esta fila, y el que hace
+ * que un +20% parezca cerca de un +44%.
+ */
+export function formatDelta(value: number | string | null | undefined): string {
+  const n = toNumber(value);
+  if (n === null) return "—";
+  return `${n >= 0 ? "+" : ""}${n.toLocaleString("es-ES", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })} pp`;
+}

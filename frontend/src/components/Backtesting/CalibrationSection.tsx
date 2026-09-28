@@ -5,6 +5,7 @@ import { ExcursionChart } from "../../components/Backtesting/ExcursionChart";
 import { SweepTable } from "../../components/Backtesting/SweepTable";
 import type {
   BacktestAnalysis,
+  BacktestBenchmark,
   PatternCalibration,
   SweepGrid,
   SweepPoint,
@@ -69,6 +70,7 @@ export function CalibrationSection({
   onSweep,
   onApply,
   sweep,
+  benchmark,
   sweeping,
   sweepError,
 }: {
@@ -77,6 +79,8 @@ export function CalibrationSection({
   /** Lanza un run nuevo con la combinacion elegida. */
   onApply: (point: SweepPoint) => void;
   sweep: SweepPoint[];
+  /** Mercado de referencia del barrido; cambia con el, no con la rejilla. */
+  benchmark: BacktestBenchmark | null;
   sweeping: boolean;
   sweepError: string | null;
 }) {
@@ -279,7 +283,7 @@ export function CalibrationSection({
 
             {sweep.length > 0 && (
               <>
-                <SweepTable points={sweep} onApply={onApply} />
+                <SweepTable points={sweep} benchmark={benchmark} onApply={onApply} />
                 <p className="mt-2 text-xs text-slate-400 dark:text-slate-500">
                   Ordenado de mejor a peor por PnL neto. La fila «actual» es la combinación con la
                   que se hizo este run: sin ella, «la mejor» no significa nada.

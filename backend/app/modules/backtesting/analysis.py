@@ -50,7 +50,9 @@ from app.modules.backtesting.engine import (
     TAKE_PROFIT,
     TIMEOUT,
     StrategyConfig,
+    build_equity_curve,
     run_backtest,
+    sharpe_ratio,
 )
 
 #: Motivos que cuentan como resultado de la estrategia, igual que en el motor.
@@ -706,6 +708,86 @@ def _run_warnings(
             f"{len(groups)} combinaciones de patrón y dirección: un único TP y SL "
             f"pueden ser una media que no le venga bien a ninguno"
         )
+
+
+# ---------------------------------------------------------------------------
+# Benchmark de mercado
+# ---------------------------------------------------------------------------
+@dataclass(frozen=True, slots=True)
+class BuyAndHold:
+    """Comprar al principio del rango y vender al final, sin operar nada.
+
+    Es la referencia que hace legible cualquier otro numero. Sin ella, un -3% y
+    un +38% pueden ser exactamente la misma estrategia en el mismo mercado: lo
+    unico que los distingue es que el mercado hizo +68% en medio, y las dos
+    versiones Lost en comisiones. Un backtest sin benchmark no dice si la
+    estrategia funciona; solo dice que paso.
+
+    Las tres decisiones que hay que tomar aqui, y por que se toman asi:
+
+    * **Entra al ``open`` de la primera vela.** Es la mejor entrada posible para
+      el que no opera: compra antes de que la estrategia pueda trading (su
+      primera entrada es la apertura de T+1). Favorecer al benchmark es lo
+      honesto, porque si la estrategia no le gana a un benchmark al que se le ha
+      dado todas las ventajas, la conclusion no admite discussion.
+
+    * **Sale al ``close`` de la ultima vela.** Es lo que se puede hacer sin mirar
+      el futuro, y evita que el numero dependa de si la ultima vela subio o bajo.
+
+    * **Mide el drawdown y el Sharpe con las mismas funciones que la estrategia**
+      (``engine.build_equity_curve`` y ``engine.sharpe_ratio``). No es
+      Longitude de estilo: si las dos cifras salieran de codigos distintos, la
+      tarjeta compararia dos cosas que no son comparables, y el error seria
+      invisible porque las dos tendrian forma de porcentaje.
+    """
+
+    candles: int
+    initial_capital: float
+    entry_price: float | None = None
+    final_price: float | None = None
+    equity_final: float | None = None
+    net_pnl: float | None = None
+    total_return_pct: float | None = None
+    max_drawdown_pct: float | None = None
+    sharpe_ratio: float | None = None
+
+
+def buy_and_hold(candles: pd.DataFrame, initial_capital: float = 1000.0) -> BuyAndHold:
+    """Benchmark de mercado sobre el rango de velas del escaneo.
+
+    Se simula la **compra y mantenimiento** en vez del primer cierre para que la
+    comparacion sea justa en el lado del capital: el ``use_fraction`` de la
+    estrategia deja parte del capital en efectivo, y comprar con todo desde el
+    primer tick es lo que hace el benchmark.
+
+    El unico caso que devuelve todo vacio es que no haya velas: ahi no hay
+    mercado, no un mercado plano, y un 0% seria mentira. Con una sola vela el
+    retorno es el de un unico salto y se devuelve tal cual; el Sharpe si queda a
+    ``None`` porque no hay varianza que estimar, y de eso se encarga
+    ``engine.sharpe_ratio`` en vez de un ``if`` aqui, para que el minimo de
+    velas valido sea el mismo en los dos sitios.
+    """
+    if candles.empty:
+        return BuyAndHold(candles=len(candles), initial_capital=initial_capital)
+
+    entry = float(candles["open"].iloc[0])
+    if entry <= 0:
+        return BuyAndHold(candles=len(candles), initial_capital=initial_capital)
+
+    closes = candles["close"].to_numpy(dtype=float)
+    equity = build_equity_curve(candles.index, initial_capital * closes / entry)
+    equity_final = float(equity["equity"].iloc[-1])
+    return BuyAndHold(
+        candles=len(candles),
+        initial_capital=initial_capital,
+        entry_price=entry,
+        final_price=float(closes[-1]),
+        equity_final=equity_final,
+        net_pnl=equity_final - initial_capital,
+        total_return_pct=(equity_final / initial_capital - 1) * 100,
+        max_drawdown_pct=float(equity["drawdown_pct"].max()),
+        sharpe_ratio=sharpe_ratio(equity),
+    )
 
 
 # ---------------------------------------------------------------------------
