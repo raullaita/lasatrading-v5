@@ -14,7 +14,7 @@ se cierra antes de que llegue la siguiente y no hay solapes.
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
 import pytest
@@ -663,6 +663,12 @@ def test_submuestreo_de_equity_conserva_extremos_y_avisa(db, service, scan_job):
     assert serie.total_points == 60
     assert serie.returned <= 12, "60 velas en 10 puntos serian 6, aqui debe recortar"
     assert serie.points[0].timestamp == INICIO, "el primer punto se conserva"
+    # Y tambien el ultimo: sin forzarlo, ``(rn-1) % step == 0`` deja caer la
+    # ultima fila en el hueco del ultimo paso y la curva no llega al cierre
+    # final, que es justo el ``equity_final`` que enseña la tarjeta.
+    assert serie.points[-1].timestamp == INICIO + timedelta(hours=59), (
+        "el punto final de la serie es el del cierre real"
+    )
     assert serie.max_drawdown_pct is not None, "viene del run, no de la serie recortada"
     # El recorte es para pintar, no para decidir: el drawdown sigue siendo el
     # de todos los puntos, no el de los diez que se devuelven.

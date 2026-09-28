@@ -660,9 +660,17 @@ class BacktestService:
             # Se numeran las velas en SQL y se queda una de cada ``step``: traer
             # los timestamps a Python para muestrear en memoria seria descargar
             # la serie entera de la hypertable para descartar el 95%.
+            #
+            # Se conserva también la última fila a propósito. Con
+            # ``(rn - 1) % step == 0`` solo el primer punto se conserva siempre:
+            # la última cae dentro del hueco del último paso, y una curva que no
+            # llega al cierre final no enseña el ``equity_final`` que dice la
+            # tarjeta. ``rn == total`` fuerza el extremo final.
             stmt = stmt.where(
                 BacktestEquityPoint.timestamp.in_(
-                    select(numbered.c.timestamp).where((numbered.c.rn - 1) % step == 0)
+                    select(numbered.c.timestamp).where(
+                        ((numbered.c.rn - 1) % step == 0) | (numbered.c.rn == total)
+                    )
                 )
             )
         points = db.scalars(stmt.order_by(BacktestEquityPoint.timestamp)).all()
