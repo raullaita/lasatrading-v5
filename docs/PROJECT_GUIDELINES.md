@@ -298,5 +298,5 @@ posterior, todos de BTCUSDT 1h y con los mismos 4 patrones de escaneo:
 - `TASK_4_PATTERN_DETECTION.md`: Tarea 4 — Detección de patrones.
 - `TASK_4_5_PATTERN_GALLERY.md`: Tarea 4.5 — Galería de patrones. Aplazada
   hasta que la 5.5 diga qué patrones son operativos.
-- `TASK_5_5_WALK_FORWARD.md`: Tarea 5.5 — Optimizador walk-forward (Fase 2).
+- `TASK_5_5_WALK_FORWARD_OPTIMIZER.md`: Tarea 5.5 — Optimizador walk-forward (Fase 2).
 - `TASK_6_ALERTS.md`: Tarea 6 — Alertas en tiempo real (Fase 3).
