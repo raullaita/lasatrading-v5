@@ -42,3 +42,12 @@ Thumbs.db
 # pesan; se regeneran con `python scripts/export_regime_fixtures.py` desde la
 # base de desarrollo, y los tests se saltan si no estan.
 backend/tests/fixtures/walk_forward/
+
+# Estado interno del planificador de Celery Beat: es una base SQLite (fichero,
+# -shm y -wal) que Celery reescribe en cada arranque. Versionarla hace que
+# `git status` ensucie y que un `git pull` en produccion sobrescriba el plan
+# con el estado del portatil. El ritmo de evaluacion vive en el codigo, en
+# `backend/app/core/celery_app.py`; esto solo es la ultima ejecucion.
+backend/celerybeat-schedule
+backend/celerybeat-schedule-shm
+backend/celerybeat-schedule-wal
