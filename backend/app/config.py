@@ -65,6 +65,19 @@ class Settings(BaseSettings):
     #: marca, porque un mensaje cortado en mitad de un numero es peor que no
     #: enviado.
     TELEGRAM_MAX_MESSAGE_CHARS: int = 4096
+    #: Cada cuanto el planificador evalua las reglas de alerta, en segundos.
+    #:
+    #: **300 s por defecto, y no 900.** El intervalo no es una cuestion de eficiencia
+    #: sino de no perder avisos: entre dos evaluaciones pueden cerrarse hasta
+    #: ``intervalo / duracion_vela`` velas, y las que ya se cerraron no estan en la
+    #: ventana la siguiente vez. Con velas de 1 minuto y un evaluador cada 15
+    #: minutos, un cruce de las 10:00 se ha ido de la ventana antes de que nadie
+    #: mire a las 10:15, y no hay ningun error: simplemente no avisa nunca.
+    #:
+    #: Con velas de 1 hora, 5 minutos dan doce evaluaciones por vela y once son
+    #: redundantes; el indice unico las para y la pre-comprobacion evita que
+    #: gasten transacciones. Mirar de mas no cuesta, mirar de menos si.
+    ALERTS_EVALUATE_SECONDS: int = 300
 
 
 def get_settings() -> Settings:

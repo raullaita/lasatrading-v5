@@ -24,11 +24,11 @@ import pandas as pd
 import pytest
 from app.core.database import SessionLocal
 from app.modules.alerts.evaluator import (
-    VELAS_RECIENTES,
     WARMUP_VELAS,
     _requeridas,
     _ruta_para,
     evaluar_regla,
+    velas_recientes,
 )
 from app.modules.alerts.models import AlertPatternCoverage, AlertVerdict
 from app.modules.data_import.models import Candle
@@ -110,11 +110,10 @@ def test_las_dos_rutas_dan_exactamente_lo_mismo(db, mercado, patron):
     basta para que un cruce aparezca o desaparezca, es decir, para que el sistema
     avise de una señal que no existe o calle una que sí.
 
-    Se compara sobre las últimas ``VELAS_RECIENTES``, que es donde se decide si
-    avisa. Antes de esa zona las diferencias de warmup son grandes por
-    definición —ahí es donde la recursión aún no ha salido del estado inicial— y
-    no importan, porque una detección antigua ya habría salido en una evaluación
-    anterior.
+    Se compara sobre la ventana reciente, que es donde se decide si avisa. Antes
+    de esa zona las diferencias de warmup son grandes por definición —ahí es donde
+    la recursión aún no ha salido del estado inicial— y no importan, porque una
+    detección antigua ya habría salido en una evaluación anterior.
     """
     patron_definicion = _requeridas(patron)
     assert patron_definicion, "el patrón no exige features y el test no probaría nada"
@@ -122,7 +121,8 @@ def test_las_dos_rutas_dan_exactamente_lo_mismo(db, mercado, patron):
     completo = _marco_completo(mercado)
     servicio = FeatureService()
     paso_min = 60
-    desde = mercado - pd.Timedelta(minutes=paso_min * (VELAS_RECIENTES + 1))
+    ventana_reciente = velas_recientes("1h", 300.0)
+    desde = mercado - pd.Timedelta(minutes=paso_min * ventana_reciente)
 
     for nombre in patron_definicion:
         indicador, params = _nombre_a_indicador(nombre)
@@ -130,7 +130,7 @@ def test_las_dos_rutas_dan_exactamente_lo_mismo(db, mercado, patron):
             nombre
         ]
         # La ruta de vuelo: los mismos ultimos WARMUP_VELAS minutos.
-        ventana = completo.tail(WARMUP_VELAS + VELAS_RECIENTES)
+        ventana = completo.tail(WARMUP_VELAS + ventana_reciente)
         serie_vuelo = servicio._calculate_indicator(ventana, indicador, params)[nombre]
         reciente_completa = serie_completa.loc[serie_completa.index >= desde]
         reciente_vuelo = serie_vuelo.reindex(reciente_completa.index)
@@ -159,12 +159,13 @@ def test_el_warmup_esta_justificado_y_no_es_redondeo(db, mercado):
     servicio = FeatureService()
     nombre = _requeridas("RSI_EXIT_OVERSOLD")[0]
     indicador, params = _nombre_a_indicador(nombre)
-    desde = mercado - pd.Timedelta(minutes=60 * (VELAS_RECIENTES + 1))
+    ventana_reciente = velas_recientes("1h", 300.0)
+    desde = mercado - pd.Timedelta(minutes=60 * ventana_reciente)
 
     serie_completa = servicio._calculate_indicator(completo, indicador, params)[nombre]
     reciente_completa = serie_completa.loc[serie_completa.index >= desde]
 
-    corto = completo.tail(200 + VELAS_RECIENTES)
+    corto = completo.tail(200 + ventana_reciente)
     serie_corta = servicio._calculate_indicator(corto, indicador, params)[nombre]
     diferencia = (
         (reciente_completa - serie_corta.reindex(reciente_completa.index)).abs().max()
@@ -186,7 +187,7 @@ def test_la_ruta_de_vuelo_calcula_todas_las_features_requeridas(db, mercado):
     assert ruta == "vuelo", "sin job de features la ruta debe ser la de vuelo"
     for nombre in _requeridas("RSI_EXIT_OVERSOLD"):
         assert nombre in marco.columns, f"falta {nombre} en el marco"
-        assert not marco[nombre].tail(VELAS_RECIENTES).isna().any(), (
+        assert not marco[nombre].tail(2).isna().any(), (
             f"{nombre} viene con NaN en las velas recientes: el detector no podría "
             "decidir nada y no avisaría de por qué"
         )
@@ -227,19 +228,6 @@ def test_la_evaluacion_siempre_devuelve_la_ruta(db, mercado):
 # ---------------------------------------------------------------------------
 # La deduplicación, que es de la base pero se comprueba desde aquí
 # ---------------------------------------------------------------------------
-def test_la_ventana_reciente_es_acotada():
-    """La ventana reciente está acotada a propósito.
-
-    Sin tope, el mismo patrón se detectaría en la última vela en cinco
-    evaluaciones seguidas y la alerta saldría cinco veces. La deduplicación por
-    índice único lo impediría, pero se habría escrito una fila por evaluación y
-    la alerta quedaría registrada como reenviada, que es información falsa.
-    """
-    assert 1 <= VELAS_RECIENTES <= 5, (
-        "una ventana mayor produce detecciones repetidas del mismo patrón"
-    )
-
-
 def test_toda_feature_del_catalogo_se_puede_reconstruir():
     """El parser tiene que cubrir **todo** el catálogo, no lo que hoy se usa.
 
@@ -282,3 +270,52 @@ def test_toda_feature_del_catalogo_se_puede_reconstruir():
         "el evaluador no sabe reconstruir estas features del catálogo:\n  "
         + "\n  ".join(incompletos)
     )
+
+
+# ---------------------------------------------------------------------------
+# La ventana reciente, que es lo que decide si se pierde un aviso
+# ---------------------------------------------------------------------------
+def test_la_ventana_cubre_las_velas_que_pueden_cerrar_entre_pasadas():
+    """El motivo de existir de ``velas_recientes``.
+
+    Una detección vive en la vela que la contiene. Si el evaluador corre cada 15
+    minutos y la vela es de 1 minuto, un cruce de las 10:00 ya se ha ido de la
+    ventana cuando el evaluador mira a las 10:15, y el aviso no se envía nunca.
+    No hay ningún error: simplemente no pasa nada, y un sistema de avisos
+    callado parece uno que no tiene nada que decir.
+    """
+    from app.modules.alerts.evaluator import velas_recientes
+
+    # Con velas de 1 minuto y 15 minutos entre pasada, pueden cerrarse 15 velas.
+    assert velas_recientes("1m", 900) >= 15
+    # Con velas de 1 minuto y 5 minutos, salen 6: 5 cerradas más una de margen.
+    assert velas_recientes("1m", 300) == 6
+
+
+def test_un_poll_mas_rapido_que_la_vela_no_multiplica_la_ventana():
+    """Con velas de 1 hora y un evaluador cada 5 minutos solo puede cerrarse
+    **una** vela entre medias, aunque entre dos pasadas quepan doce horas.
+
+    Multiplicar por doce sería mirar medio día de velas para encontrar lo mismo,
+    y cada poll redundante abriría una transacción que el índice único rechaza.
+    """
+    from app.modules.alerts.evaluator import velas_recientes
+
+    assert velas_recientes("1h", 300) == 2
+    assert velas_recientes("1d", 300) == 2
+
+
+def test_la_ventana_nunca_baja_de_dos():
+    """Dos es el suelo: una sola vela deja fuera el caso de que la detección caiga
+    justo en la última, que es donde cae la mitad de las veces."""
+    from app.modules.alerts.evaluator import velas_recientes
+
+    for tf in ("1m", "15m", "1h", "4h", "1d"):
+        assert velas_recientes(tf, 1) >= 2
+
+
+def test_un_timeframe_desconocido_no_se_adivina():
+    from app.modules.alerts.evaluator import velas_recientes
+
+    with pytest.raises(ValueError):
+        velas_recientes("7m", 300)

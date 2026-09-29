@@ -404,6 +404,19 @@ def service_cmd(name: str) -> list:
             "8000",
         ]
     if name == "celery":
+        # `-B` arranca el planificador embebido en el mismo proceso. La
+        # alternativa —un servicio `celery-beat` aparte— es la arquitectura
+        # correcta en cuanto haya varios workers, y aquí no los hay: es una
+        # máquina, un worker.
+        #
+        # Y el riesgo del embebido, que es arrancar dos planificadores si se
+        # duplica el worker, es **benigno aquí** y por un motivo concreto: la
+        # tarea de alertas no lleva ningún identificador de pasada y el índice
+        # único de `alerts` para el segundo intento. Dos planificadores hacen
+        # trabajo duplicado, no dos avisos.
+        #
+        # Si algún día se escala a varios workers, esto se separa: el duplicado
+        # seguiría sin duplicar avisos, pero sí multiplicaría la carga.
         return [
             python,
             "-m",
@@ -411,6 +424,7 @@ def service_cmd(name: str) -> list:
             "-A",
             "app.core.celery_app",
             "worker",
+            "-B",
             "-l",
             "INFO",
         ]

@@ -64,12 +64,11 @@ from app.modules.patterns.service import PatternScanService
 #: tabla del docstring del módulo.
 WARMUP_VELAS = 1000
 
-#: Cuántas velas recientes se consideran «ahora». Un evaluador cada 5 minutos
-#: sobre velas de 1h examina las últimas 2: si mirara más, el mismo patrón se
-#: detectaría en varias evaluaciones seguidas y la alerta saldría repetida. La
-#: deduplicación por índice único lo taparía, pero se habría escrito una fila por
-#: evaluación y la alerta quedaría registrada como reenviada, que es falso.
-VELAS_RECIENTES = 2
+#: Mínimo de velas recientes, y el suelo de la fórmula de abajo.
+#:
+#: Dos son las justas para no perder nada en el caso normal, pero no bastan
+#: siempre, y ese "no siempre" es el motivo de existir de esta constante.
+VELAS_RECIENTES_MINIMO = 2
 
 #: Margen sobre el que la caché se acepta como «fresca». Dos velas de 1h es una
 #: hora, y el evaluador corre cada 5 minutos, así que una caché con dos velas de
@@ -87,6 +86,35 @@ class Deteccion:
     #: la apertura de T+1, que en el momento del aviso no ha ocurrido.
     reference_price: float
     ruta: str
+
+
+def velas_recientes(timeframe: str, intervalo_s: float) -> int:
+    """Cuántas velas hay que mirar para no perder nada entre dos evaluaciones.
+
+    ## El problema que esto resuelve
+
+    Una detección vive en la vela que la contiene. Si el evaluador corre cada 15
+    minutos y la vela es de 1 minuto, un cruce de las 10:00 ya ha salido de la
+    ventana cuando el evaluador mira a las 10:15, y **el aviso no se envía
+    nunca**. No hay ningún error: simplemente no pasa nada, y un sistema de
+    avisos callado parece uno que no tiene nada que decir.
+
+    ## La fórmula
+
+    Entre dos evaluaciones pueden haber cerrado ``intervalo / duracion_vela``
+    velas como mucho, así que hay que mirar esa-many más una, y nunca menos de
+    dos. Importa que sea ``floor`` y no ``ceil``: si el evaluador pasa más
+    frecuentemente de lo que dura la vela —el caso normal, 5 minutos con velas
+    de 1 hora— solo puede cerrarse **una** vela entre medias, y multiplicar por
+    veinte es trabajo que no compra nada.
+
+    Mirar de más no cuesta casi nada: el warmup de 1.000 velas se carga igual, y
+    los duplicados los para el indice único de ``alerts``. Mirar de menos sí
+    cuesta, porque son avisos que no llegan.
+    """
+    minutos = _minutos_de_vela(timeframe)
+    cerradas = int(intervalo_s // 60) // minutos
+    return max(VELAS_RECIENTES_MINIMO, cerradas + 1)
 
 
 @dataclass(frozen=True, slots=True)
@@ -298,12 +326,15 @@ def _ruta_para(
     return _marco_con_vuelo(velas, requeridas), "vuelo"
 
 
-def evaluar_regla(db: Session, regla) -> Evaluacion:
+def evaluar_regla(db: Session, regla, intervalo_s: float = 300.0) -> Evaluacion:
     """Detecta el patrón de la regla en las velas más recientes.
 
     La detección se hace con ``PatternService._run_step``, el mismo método que
     usa un job de escaneo, para que «lo que la alerta vigila» y «lo que el escaneo
     encuentra» sean literalmente la misma cuenta.
+
+    ``intervalo_s`` es cada cuánto se llama, y determina cuántas velas hay que
+    mirar. Ver ``velas_recientes`` para por qué no es un detalle.
     """
     ultima = _ultima_vela(db, regla.symbol, regla.timeframe)
     if ultima is None:
@@ -385,7 +416,8 @@ def evaluar_regla(db: Session, regla) -> Evaluacion:
             velas=len(marco),
         )
 
-    desde = ultima - pd.Timedelta(minutes=minutos * VELAS_RECIENTES)
+    ventana = velas_recientes(regla.timeframe, intervalo_s)
+    desde = ultima - pd.Timedelta(minutes=minutos * ventana)
     recientes = deteccion[deteccion["timestamp"] >= desde]
     cierres = marco["close"]
     detecciones = tuple(
@@ -402,7 +434,7 @@ def evaluar_regla(db: Session, regla) -> Evaluacion:
         detections=detecciones,
         ruta=ruta,
         motivo=(
-            f"{len(detecciones)} detección(es) en las últimas {VELAS_RECIENTES} velas"
+            f"{len(detecciones)} detección(es) en las últimas {ventana} velas"
             if detecciones
             else "Sin detecciones en las velas recientes"
         ),

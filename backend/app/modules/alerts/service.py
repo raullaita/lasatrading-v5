@@ -112,7 +112,10 @@ class AlertService:
     # ---------------------------------------------------------- evaluacion
 
     def evaluar_todas(
-        self, db: Session, cliente: TelegramClient | None = None
+        self,
+        db: Session,
+        cliente: TelegramClient | None = None,
+        intervalo_s: float = 300.0,
     ) -> ResumenEvaluacion:
         """Una pasada por todas las reglas activas.
 
@@ -142,7 +145,7 @@ class AlertService:
                     if regla is None or not regla.enabled:
                         continue
                     evaluadas += 1
-                    evaluacion = evaluar_regla(db, regla)
+                    evaluacion = evaluar_regla(db, regla, intervalo_s)
                     regla.last_evaluated_at = datetime.now(timezone.utc)
                     regla.last_evaluation_note = (
                         f"[{evaluacion.ruta}] {evaluacion.motivo}"
@@ -200,6 +203,23 @@ class AlertService:
             return "enfriamiento"
 
         with SessionLocal() as db:
+            # Pre-comprobación **además** del índice único, no en vez de él. Con
+            # velas de 1 hora y un evaluador cada 5 minutos, la misma vela está
+            # en la ventana 12 veces y las 12 intentarían insertar; sin esta
+            # comprobación cada una abre una transacción que acaba en
+            # IntegrityError y rollback. El índice sigue siendo la garantía real
+            # —esto solo evita el ruido en el caso normal, que no es el de
+            # carrera—.
+            ya_avisada = db.scalar(
+                select(Alert.id)
+                .where(
+                    Alert.rule_id == regla.id,
+                    Alert.signal_timestamp == deteccion.timestamp.to_pydatetime(),
+                )
+                .limit(1)
+            )
+            if ya_avisada is not None:
+                return "duplicada"
             aviso = Alert(
                 rule_id=regla.id,
                 signal_timestamp=deteccion.timestamp.to_pydatetime(),

@@ -13,6 +13,7 @@ celery_app = Celery(
         "app.modules.features.tasks",
         "app.modules.patterns.tasks",
         "app.modules.backtesting.tasks",
+        "app.modules.alerts.tasks",
     ],
 )
 
@@ -28,4 +29,16 @@ celery_app.conf.update(
     worker_prefetch_multiplier=1,
     task_soft_time_limit=23 * 3600,
     task_time_limit=24 * 3600,
+    # El evaluador de alertas se programa solo, con Celery Beat.
+    #
+    # El intervalo sale de `ALERTS_EVALUATE_SECONDS` y **no** es una preferencia de
+    # eficiencia: el evaluador mira hacia atrás lo que pueda haberse cerrado entre
+    # dos pasadas, y con velas de 1 minuto un intervalo largo pierde avisos sin
+    # que nada falle. Ver `alerts.evaluator.velas_recientes`.
+    beat_schedule={
+        "evaluar-reglas-de-alertas": {
+            "task": "alerts.evaluate_rules",
+            "schedule": float(settings.ALERTS_EVALUATE_SECONDS),
+        },
+    },
 )
