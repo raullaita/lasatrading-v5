@@ -469,20 +469,26 @@ def test_el_sharpe_entra_comprimido():
 # Bootstrap de bloques
 # ---------------------------------------------------------------------------
 def test_bootstrap_con_un_solo_bloque_es_el_intervalo_de_las_operaciones():
-    operaciones = [float(v) for v in [10, -5, 20, -3, 8, 2]]
+    """Los bloques son **retornos**, y el intervalo es el del retorno compuesto."""
+    operaciones = [0.10, -0.05, 0.20, -0.03, 0.08, 0.02]
 
     ci = block_bootstrap_ci([operaciones], iteraciones=5000, seed=1)
 
     assert ci is not None
     assert ci[0] < ci[1]
-    # Con una sola ventana el IC tiene que rodear la suma observada, que es 32.
-    assert ci[0] <= sum(operaciones) <= ci[1]
+    # En **porcentaje**, que es la unidad de `oos_return_pct` y en la que se
+    # compara con el cero para el veredicto. Con una sola ventana el IC tiene que
+    # rodear el retorno observado: componer una vez es sumar, asi que el 32%
+    # observado esta en medio.
+    observado = sum(operaciones) * 100
+    assert ci[0] <= observado <= ci[1]
+    assert ci[1] < 100, "un +32% observado no puede dar un techo de +3.200%"
 
 
 def test_el_bootstrap_de_bloques_nunca_extreme_operaciones_entre_ventanas():
     """Propiedad demostrable del bootstrap de bloques: cada ventana se remuestrea
-    **desde si misma**, asi que el total siempre cae entre el minimo y el maximo
-    que permiten las ventanas por separado.
+    **desde si misma**, asi que el total siempre cae entre lo que permiten las
+    ventanas por separado.
 
     Con `n` operaciones por ventana, el minimo alcanzable de una ventana es
     `n * min(ventana)` y el maximo `n * max(ventana)`. Remuestrar plano tambien
@@ -490,23 +496,25 @@ def test_el_bootstrap_de_bloques_nunca_extreme_operaciones_entre_ventanas():
     la garantia de que no se mezclan operaciones de ventanas distintas, que es lo
     que lo hace conservador cuando las ventanas estan correlacionadas.
 
-    Que el intervalo de bloques sea *mas ancho* que el plano es una consecuencia
-    estadistica, no un teorema: depende de cuan correlacionadas esten las
-    operaciones de una misma ventana, y eso no se comprueba en un test sin
-    inventar la correlacion.
+    Y el total de las ventanas se **compone**, asi que los limites son un
+    producto, no una suma: `prod(1 + n * extremo(ventana)) - 1`. Con una suma,
+    nueve ventanas del +80% darian un techo de +720%, que es dinero que el capital
+    no puede llegar a hacer; con el producto, el techo es `(1,8)^9 - 1 = 198%`.
+    El producto es el unico de los dos que no inventa.
     """
-    bloques = [[10.0, -5.0, 20.0, 2.0], [3.0, -8.0, 1.0, 4.0]]
+    bloques = [[0.10, -0.05, 0.20, 0.02], [0.03, -0.08, 0.01, 0.04]]
     n = 4
-    minimo = sum(n * min(bloque) for bloque in bloques)
-    maximo = sum(n * max(bloque) for bloque in bloques)
+    minimo = (math.prod(1 + n * min(bloque) for bloque in bloques) - 1) * 100
+    maximo = (math.prod(1 + n * max(bloque) for bloque in bloques) - 1) * 100
 
     ci = block_bootstrap_ci(bloques, iteraciones=5000, seed=7)
 
     assert ci is not None
     assert minimo <= ci[0] <= ci[1] <= maximo
-    # 4·(-5) + 4·(-8) = -52 y 4·20 + 4·4 = 96... el maximo del primer
-    # bloque es 20 y el del segundo 4: 4·20 + 4·4 = 96.
-    assert minimo == -52.0 and maximo == 96.0
+    # Comprobados a mano y en porcentaje: (1 - 0,20) x (1 - 0,32) - 1 = -45,6% y
+    # (1 + 0,80) x (1 + 0,16) - 1 = 108,8%.
+    assert minimo == pytest.approx(-45.6, abs=1e-6)
+    assert maximo == pytest.approx(108.8, abs=1e-6)
 
 
 def test_el_bootstrap_de_bloques_es_mas_conservador_que_el_plano():
@@ -514,18 +522,48 @@ def test_el_bootstrap_de_bloques_es_mas_conservador_que_el_plano():
 
     Remuestrando plano, una operacion buena de la ventana 1 puede emparejarse con
     una mala de la ventana 2, y se fabrican pares que en el mercado no existen.
-    Remuestrando por bloques, cada ventana conserva su propio signo: el total no
-    puede pasar de la suma maxima por ventana, que es 2.000.
+    Remuestrando por bloques, cada ventana conserva su propio signo: no se pasa
+    del techo que permiten las ventanas por separado.
     """
-    bloques = [[1000.0, 1000.0], [-999.0, -999.0], [1000.0, 1000.0]]
+    bloques = [[0.20, 0.10], [-0.15, -0.05], [0.20, 0.10]]
 
     ci = block_bootstrap_ci(bloques, iteraciones=5000, seed=11)
 
     assert ci is not None
-    # Cada bloque aporta entre su minimo y su maximo, multiplicados por su
-    # tamaño: 2.000 - 1.998 + 2.000 = 2.002 es el techo alcanzable.
-    assert ci[1] <= 2002
-    assert ci[0] >= -1998
+    n = 2
+    techo = (math.prod(1 + n * max(b) for b in bloques) - 1) * 100
+    suelo = (math.prod(1 + n * min(b) for b in bloques) - 1) * 100
+    assert suelo <= ci[0] and ci[1] <= techo
+
+
+def test_el_intervalo_converge_y_no_se_dispara():
+    """La regresion del arreglo, y la razon de hacerlo.
+
+    Con ventanas del +10% cada una, componer multiplicando factores y remuestrear
+    esas ventanas hacia arriba daba un limite superior de +1.128% sobre una
+    estimacion puntual de +74%. Ese numero no es una cota de riesgo: es un numero
+    que marea, y en pantalla hace dudar de todo lo demas de la pantalla.
+
+    La propiedad que se fija es de **escala**: el limite superior tiene que estar
+    en el mismo orden de magnitud que la estimacion puntual y no un orden por
+    encima. Con el bootstrap en espacio logaritmico, componer es sumar y el
+    intervalo sale del orden del retorno que estima.
+    """
+    rng = np.random.default_rng(7)
+    # Nueve ventanas con retornos por operacion de +0,4% +- 0,2%.
+    bloques = [list(rng.normal(0.004, 0.002, size=30)) for _ in range(9)]
+
+    ci = block_bootstrap_ci(bloques, iteraciones=20000, seed=3)
+
+    assert ci is not None
+    bajo, alto = ci
+    puntual = (math.prod(1 + sum(b) for b in bloques) - 1) * 100
+    assert bajo > 0, "con nueve ventanas positivas el limite inferior es positivo"
+    assert alto < puntual * 4, (
+        f"el limite superior ({alto:.1%}) es mas de cuatro veces la estimacion "
+        f"puntual ({puntual:.1%}): el intervalo no ha convergido y no sirve para "
+        "decidir nada"
+    )
 
 
 def test_bootstrap_sin_datos_devuelve_none_y_no_cero():
@@ -535,11 +573,24 @@ def test_bootstrap_sin_datos_devuelve_none_y_no_cero():
     assert block_bootstrap_ci([[], []]) is None
 
 
+def test_una_ventana_que_pierde_todo_se_descarta_en_vez_de_producir_nan():
+    """Perder mas del 100% en una ventana es imposible sin apalancamiento, pero
+    ``log1p(-1)`` es el limite y el resultado seria un ``nan`` que se propaga al
+    intervalo entero.
+
+    Se descarta esa muestra y se sigue. Si todas se descartaran se devuelve
+    ``None``: un intervalo que no se puede calcular no es un intervalo de cero.
+    """
+    ci = block_bootstrap_ci([[-1.0, -1.0], [-1.0, -1.0]], iteraciones=200, seed=1)
+
+    assert ci is None
+
+
 def test_bootstrap_es_reproducible():
     """Sin semilla, dos ejecuciones del mismo informe darian numeros distintos
     y el IC no seria comparable con nada."""
 
-    bloques = [[1.0, 2.0, -1.0, 4.0], [2.0, -1.0, 3.0, 1.0]]
+    bloques = [[0.10, 0.20, -0.10, 0.40], [0.20, -0.10, 0.30, 0.10]]
 
     assert block_bootstrap_ci(bloques, iteraciones=2000, seed=99) == block_bootstrap_ci(
         bloques, iteraciones=2000, seed=99
@@ -584,8 +635,13 @@ def _outcome(
             max_drawdown_pct=5.0,
             market_return_pct=mercado,
             market_max_drawdown_pct=8.0,
-            trade_pnls=pnls
-            or tuple([10.0] * (trades // 2) + [-2.0] * (trades - trades // 2)),
+            # El bloque del bootstrap son **retornos**, no PnL: el capital de
+            # esta ventana es 1.000, asi que 10.0 de PnL son +1%.
+            trade_returns=(
+                tuple(x / 1000.0 for x in pnls)
+                if pnls
+                else tuple([0.01] * (trades // 2) + [-0.002] * (trades - trades // 2))
+            ),
         ),
     )
 

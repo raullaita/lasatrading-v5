@@ -414,6 +414,11 @@ class WindowMetrics:
     market_max_drawdown_pct: float
     exits: dict[str, int] = field(default_factory=dict)
     trade_pnls: tuple[float, ...] = ()
+    #: Los mismos PnL **como retornos** respecto al capital de la ventana. El
+    #: capital se reinicia en cada ventana, asi que es el mismo en todas, y
+    #: normalizar aqui es lo que hace que el intervalo sea comparable con
+    #: ``CandidateReport.oos_return_pct`` y no dependa del capital inicial.
+    trade_returns: tuple[float, ...] = ()
 
 
 def _exits_of(result) -> dict[str, int]:
@@ -489,6 +494,11 @@ def evaluate_window(
             exits=_exits_of(result),
             trade_pnls=tuple(
                 float(t.net_pnl) for t in result.trades if t.net_pnl is not None
+            ),
+            trade_returns=tuple(
+                float(t.net_pnl) / capital
+                for t in result.trades
+                if t.net_pnl is not None
             ),
         ),
         result.equity,
@@ -649,10 +659,10 @@ def block_bootstrap_ci(
     iteraciones: int = BOOTSTRAP_ITERATIONS,
     seed: int = BOOTSTRAP_SEED,
 ) -> tuple[float, float] | None:
-    """IC95% del PnL OOS agregado, por **bootstrap de bloques**.
+    """IC95% del retorno OOS **compuesto**, por bootstrap de bloques.
 
     Un bloque por ventana. Se remuestrea cada ventana por separado con reemplazo,
-    se suma dentro de la ventana y se suman las ventanas.
+    se suma dentro de la ventana y las ventanas se componen.
 
     Remuestrar plano trataria cada operacion como independiente de todas las
     demas, y con ventanas solapadas no lo son: dos operaciones de ventanas
@@ -661,8 +671,30 @@ def block_bootstrap_ci(
     El bloque conserva la dependencia interna de la ventana y solo trata a las
     ventanas como la unidad de intercambio.
 
-    Devuelve ``None`` si no hay ninguna operacion: un intervalo de una muestra
-    vacia no es un intervalo, y ``0,0`` se leeria como "no hay riesgo".
+    **La composicion va en espacio logaritmico**, y no es un detalle
+    numerico. Componer multiplicando factores ``(1 + r)`` y remuestrear esos
+    productos hace que la cola derecha estalle: nueve ventanas con +12% dan un
+    ``(1,12)^9 = 2,77``, y si ademas se remuestrea eligiendo varias veces las
+    ventanas buenas, el limite superior se va a +1.128% sobre una estimacion
+    puntual de +74%. Ese numero no es una cota de riesgo, es un numero que
+    marea. En logaritmos componer es **sumar** (``sum(log1p(r))``), la suma es
+    estable y el intervalo sale del orden de magnitud del retorno que estima.
+
+    Los bloques son **retornos por operacion**, no PnL en moneda: el capital se
+    reinicia en cada ventana, y sin normalizar el intervalo escalaria con el
+    capital inicial y no seria comparable con ``oos_return_pct``.
+
+    Devuelve el intervalo **en porcentaje**, que es la unidad de
+    ``CandidateReport.oos_return_pct`` y en la que se compara contra el cero para
+    dictar el veredicto. La conversion va aqui y no en quien lo lee, porque el
+    error de no hacerla es silencioso: un intervalo en fraccion al lado de un
+    retorno en porcentaje se ve como un numero mas pequeno, no como una falta de
+    unidades, y asi un +70% de intervalo se enseña como +0,7%.
+
+    Devuelve ``None`` si no hay ninguna operacion, o si ninguna muestra produce
+    una ventana que pierde mas del 100% (imposible sin apalancamiento, pero
+    ``log1p(-1)`` no es un numero): un intervalo de una muestra vacia no es un
+    intervalo, y ``0,0`` se leeria como "no hay riesgo".
     """
     utiles = [tuple(b) for b in bloques if b]
     if not utiles:
@@ -671,15 +703,23 @@ def block_bootstrap_ci(
     generador = random.Random(seed)
     totales: list[float] = []
     for _ in range(iteraciones):
-        suma = 0.0
+        log_total = 0.0
+        válida = True
         for bloque in utiles:
             n = len(bloque)
-            suma += sum(bloque[generador.randrange(n)] for _ in range(n))
-        totales.append(suma)
+            retorno = sum(bloque[generador.randrange(n)] for _ in range(n))
+            if retorno <= -1.0:
+                válida = False
+                break
+            log_total += math.log1p(retorno)
+        if válida:
+            totales.append(math.expm1(log_total))
+    if not totales:
+        return None
     totales.sort()
     return (
-        totales[int(0.025 * iteraciones)],
-        totales[int(0.975 * iteraciones)],
+        totales[int(0.025 * iteraciones)] * 100.0,
+        totales[int(0.975 * iteraciones)] * 100.0,
     )
 
 
@@ -805,7 +845,7 @@ def build_candidate(
         )
 
     ci95 = block_bootstrap_ci(
-        [o.oos.trade_pnls for o in outcomes], iteraciones=iteraciones, seed=seed
+        [o.oos.trade_returns for o in outcomes], iteraciones=iteraciones, seed=seed
     )
     notas: list[str] = []
     if ci95 is None:
