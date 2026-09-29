@@ -8,6 +8,7 @@ import {
   type ChartRow,
   CHART_THEME,
   highlightRange,
+  timeframeSeconds,
   indicatorNames,
   toUnixSeconds,
 } from "./chartData";
@@ -39,6 +40,7 @@ export function UnifiedChart({
   highlightTimestamp,
   title,
   subtitle,
+  timeframe,
   height = 420,
 }: {
   rows: ChartRow[];
@@ -47,6 +49,11 @@ export function UnifiedChart({
   highlightTimestamp?: string | null;
   title: string;
   subtitle?: string;
+  /**
+   * Solo lo usa el Recentrar, y por eso es opcional: sin el, la ventana de
+   * contexto se mide en minutos y solo es correcta en velas de 1 minuto.
+   */
+  timeframe?: string;
   height?: number;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -143,9 +150,15 @@ export function UnifiedChart({
 
   // 5 · Encuadre. Al Highlight se le fija una ventana de velas en vez de
   // `fitContent`: con el rango de un año entero la vela queda microscopica.
+  // La ventana se mide en velas del propio timeframe, que es lo unico que
+  // hace que «recentrar» signifique lo mismo en 15m que en 1d.
   const highlightSeconds = useMemo(
     () => (highlightTimestamp ? toUnixSeconds(highlightTimestamp) : null),
     [highlightTimestamp],
+  );
+  const candleSeconds = useMemo(
+    () => (timeframe ? timeframeSeconds(timeframe) : 60),
+    [timeframe],
   );
   useEffect(() => {
     const chart = chartRef.current;
@@ -156,7 +169,7 @@ export function UnifiedChart({
     }
     try {
       chart.timeScale().setVisibleRange(
-        highlightRange(highlightSeconds, 60) as {
+        highlightRange(highlightSeconds, 60, candleSeconds) as {
           from: Time;
           to: Time;
         },
@@ -167,7 +180,7 @@ export function UnifiedChart({
     }
     // Sin el `catch` que envuelve a `fitContent` tambien, un rango degenerado
     // (una sola vela) deja la escala sin dominio y lightweight-charts lanza.
-  }, [rows, highlightSeconds]);
+  }, [rows, highlightSeconds, candleSeconds]);
 
   return (
     <div className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">

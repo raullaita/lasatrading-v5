@@ -5,6 +5,20 @@ import { Link } from "react-router-dom";
 
 import { CoverageBadge, ValidationBadge } from "../../components/Alerts/ValidationBadge";
 import {
+  PageHeader,
+  PageShell,
+  cardClass,
+  dangerButtonClass,
+  errorClass,
+  primaryButtonClass,
+  secondaryButtonClass,
+  tableBodyClass,
+  tableCellClass,
+  tableClass,
+  tableHeadCellClass,
+  tableHeadClass,
+} from "../../components/ui/PageShell";
+import {
   deleteAlertRule,
   getAlertRules,
   getAlerts,
@@ -22,13 +36,14 @@ import {
 import { formatDateTimeEs, toNumber } from "../../utils/format";
 
 /**
- * Pantalla de alertas: reglas, historial y canal.
+ * Pantalla de alertas: canal, reglas e historial.
  *
- * El orden de las tres cosas es deliberado y es el orden de las preguntas que se
- * hace el usuario: **¿funciona el canal?**, **¿qué estoy vigilando y con qué
- * respaldo?**, **¿qué ha pasado?**. El canal va primero porque si está roto todo
- * lo demás es teatro, y una pantalla donde el canal se comprueba en un menú
- * secundario esconde justo el fallo que más tiempo cuesta diagnosticar.
+ * El orden de las tres cosas es el orden de las preguntas del usuario: **¿funciona
+ * el canal?**, **¿qué estoy vigilando y con qué respaldo?**, **¿qué ha pasado?**.
+ *
+ * El canal va primero porque si está roto todo lo demás es teatro, y una
+ * pantalla donde el canal se comprueba en un menú secundario esconde justo el
+ * fallo que más tiempo cuesta diagnosticar.
  */
 export default function Alerts() {
   const [reglas, setReglas] = useState<AlertRule[]>([]);
@@ -59,23 +74,24 @@ export default function Alerts() {
   }, [cargar]);
 
   /**
-   * Lo que llega por el socket es solo un identificador, y la fila se pide por
+   * Lo que llega por el socket es solo un identificador y la fila se pide por
    * HTTP. Es lo que hace que lo que se ve en pantalla no pueda divergir de lo
    * que hay en la base.
    */
-  useEffect(() => {
-    return connectAlertStream({
-      onAlert: (alertId) => {
-        void getAlerts(1).then((as) => {
-          setAlertas(as.alerts);
-          setTotal(as.total);
-        });
-        void alertId;
-      },
-      onConnectionChange: setEnVivo,
-      onError: setError,
-    });
-  }, []);
+  useEffect(
+    () =>
+      connectAlertStream({
+        onAlert: () => {
+          void getAlerts(1).then((as) => {
+            setAlertas(as.alerts);
+            setTotal(as.total);
+          });
+        },
+        onConnectionChange: setEnVivo,
+        onError: setError,
+      }),
+    [],
+  );
 
   const probar = async () => {
     setProbando(true);
@@ -118,66 +134,64 @@ export default function Alerts() {
   const validadas = reglas.filter((r) => VALIDADA.has(r.validation_status)).length;
 
   return (
-    <div className="space-y-6">
-      <header className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-semibold">Alertas</h1>
-          <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
-            Avisos de patrones que aparecen en tus datos, con la configuración que alguien validó y
-            el veredicto que tiene. La herramienta informa;{" "}
+    <PageShell>
+      <PageHeader
+        title="Alertas"
+        subtitle={
+          <>
+            Avisos de patrones que aparecen en tus datos, con la configuración
+            que alguien validó y el veredicto que tiene. La herramienta informa;{" "}
             <strong>la decisión de operar es tuya</strong>.
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <span
-            className={`inline-flex items-center gap-1 text-xs ${
-              enVivo ? "text-emerald-600 dark:text-emerald-400" : "text-slate-400"
-            }`}
-          >
-            <Radio className="h-3.5 w-3.5" />
-            {enVivo ? "en vivo" : "sin conexión en vivo"}
-          </span>
-          <Link
-            to="/alerts/new"
-            className="inline-flex items-center gap-1 rounded bg-blue-600 px-3 py-1.5 text-sm font-medium text-white"
-          >
-            <Plus className="h-4 w-4" /> Nueva regla
-          </Link>
-          <button
-            type="button"
-            onClick={() => void cargar()}
-            className="rounded border border-slate-300 px-2 py-1.5 dark:border-slate-600"
-          >
-            <RefreshCw className="h-4 w-4" />
-          </button>
-        </div>
-      </header>
+          </>
+        }
+        actions={
+          <>
+            <span
+              className={`inline-flex items-center gap-1 text-xs ${
+                enVivo
+                  ? "text-emerald-600 dark:text-emerald-400"
+                  : "text-slate-400 dark:text-slate-500"
+              }`}
+            >
+              <Radio className="h-3.5 w-3.5" />
+              {enVivo ? "en vivo" : "sin conexión"}
+            </span>
+            <Link to="/alerts/new" className={primaryButtonClass}>
+              <Plus className="h-4 w-4" />
+              Nueva regla
+            </Link>
+            <button
+              type="button"
+              onClick={() => void cargar()}
+              className={secondaryButtonClass}
+              aria-label="Refrescar"
+            >
+              <RefreshCw className={`h-4 w-4 ${cargando ? "animate-spin" : ""}`} />
+            </button>
+          </>
+        }
+      />
 
-      {error && (
-        <div
-          role="alert"
-          className="rounded border border-red-300 bg-red-50 p-3 text-sm text-red-700 dark:border-red-800 dark:bg-red-950/40 dark:text-red-300"
-        >
-          {error}
-        </div>
-      )}
+      {error && <p className={errorClass}>{error}</p>}
 
       {/* 1 · El canal, primero. Si está roto, todo lo demás es teatro. */}
-      <section className="rounded border border-slate-200 p-4 dark:border-slate-700">
+      <section className={`${cardClass} mb-4 p-4`}>
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h2 className="font-medium">Canal de Telegram</h2>
-            <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
-              La causa número uno de «las alertas no me llegan» es de configuración, y descubrirlo
-              esperando una detección real es esperar horas para enterarte de un dedo que no se
-              movió.
+            <h2 className="font-semibold text-slate-900 dark:text-slate-100">
+              Canal de Telegram
+            </h2>
+            <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+              La causa número uno de «las alertas no me llegan» es de
+              configuración, y descubrirlo esperando una detección real es esperar
+              horas para enterarte de un dedo que no se movió.
             </p>
           </div>
           <button
             type="button"
             onClick={() => void probar()}
             disabled={probando}
-            className="inline-flex items-center gap-2 rounded border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-100 disabled:opacity-50 dark:border-slate-600 dark:hover:bg-slate-700"
+            className={secondaryButtonClass}
           >
             {probando ? (
               <Loader2 className="h-4 w-4 animate-spin" />
@@ -189,10 +203,10 @@ export default function Alerts() {
         </div>
         {canal && (
           <div
-            className={`mt-3 rounded border p-3 text-sm ${
+            className={`mt-3 rounded-lg border p-3 text-sm ${
               canal.ok
-                ? "border-emerald-300 bg-emerald-50 dark:border-emerald-800 dark:bg-emerald-950/40"
-                : "border-amber-300 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/40"
+                ? "border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-300"
+                : "border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-300"
             }`}
           >
             <p className="font-medium">
@@ -204,24 +218,32 @@ export default function Alerts() {
             </p>
             {canal.pista && <p className="mt-1">{canal.pista}</p>}
             {canal.error && !canal.pista && (
-              <p className="mt-1 font-mono text-xs opacity-80">{canal.error}</p>
+              <p className="mt-1 break-all font-mono text-xs opacity-80">
+                {canal.error}
+              </p>
             )}
           </div>
         )}
       </section>
 
       {/* 2 · Las reglas y su respaldo. */}
-      <section className="space-y-2">
-        <div className="flex items-baseline justify-between">
-          <h2 className="font-medium">Reglas ({reglas.length})</h2>
+      <section className="mb-4">
+        <div className="mb-2 flex items-baseline justify-between">
+          <h2 className="font-semibold text-slate-900 dark:text-slate-100">
+            Reglas ({reglas.length})
+          </h2>
           <p className="text-xs text-slate-500 dark:text-slate-400">
             {validadas} de {reglas.length} con evidencia que no es un descarte
           </p>
         </div>
-        {cargando ? (
-          <Loader2 className="h-4 w-4 animate-spin" />
+        {cargando && reglas.length === 0 ? (
+          <div className={cardClass}>
+            <p className="px-4 py-10 text-center">
+              <Loader2 className="mx-auto h-4 w-4 animate-spin" />
+            </p>
+          </div>
         ) : reglas.length === 0 ? (
-          <div className="rounded border border-dashed border-slate-300 p-8 text-center text-sm text-slate-500 dark:border-slate-600">
+          <div className={`${cardClass} px-4 py-10 text-center text-slate-500 dark:text-slate-400`}>
             No hay reglas. Crea una y el sistema avisará cuando aparezca el patrón.
           </div>
         ) : (
@@ -239,38 +261,42 @@ export default function Alerts() {
       </section>
 
       {/* 3 · El historial. */}
-      <section className="space-y-2">
-        <h2 className="font-medium">Historial ({total})</h2>
+      <section className="mb-4">
+        <h2 className="mb-2 font-semibold text-slate-900 dark:text-slate-100">
+          Historial ({total})
+        </h2>
         {alertas.length === 0 ? (
-          <p className="rounded border border-dashed border-slate-300 p-6 text-center text-sm text-slate-500 dark:border-slate-600">
+          <div className={`${cardClass} px-4 py-10 text-center text-slate-500 dark:text-slate-400`}>
             Todavía no ha saltado ninguna alerta.
-          </p>
+          </div>
         ) : (
-          <div className="overflow-x-auto rounded border border-slate-200 dark:border-slate-700">
-            <table className="w-full text-sm">
-              <thead className="bg-slate-50 text-left dark:bg-slate-800">
+          <div className={tableClass}>
+            <table className="w-full text-left text-sm">
+              <thead className={tableHeadClass}>
                 <tr>
-                  <th className="px-2 py-2">Vela (UTC)</th>
-                  <th className="px-2 py-2">Símbolo</th>
-                  <th className="px-2 py-2">Patrón</th>
-                  <th className="px-2 py-2 text-right">Referencia</th>
-                  <th className="px-2 py-2">Entrega</th>
+                  <th className={tableHeadCellClass}>Vela (UTC)</th>
+                  <th className={tableHeadCellClass}>Símbolo</th>
+                  <th className={tableHeadCellClass}>Patrón</th>
+                  <th className={`${tableHeadCellClass} text-right`}>Referencia</th>
+                  <th className={tableHeadCellClass}>Entrega</th>
                 </tr>
               </thead>
-              <tbody>
+              <tbody className={tableBodyClass}>
                 {alertas.map((alerta) => (
-                  <tr key={alerta.id} className="border-t border-slate-100 dark:border-slate-800">
-                    <td className="px-2 py-2 whitespace-nowrap">
+                  <tr key={alerta.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50">
+                    <td className={`${tableCellClass} whitespace-nowrap`}>
                       {formatDateTimeEs(alerta.signal_timestamp)}
                     </td>
-                    <td className="px-2 py-2 whitespace-nowrap">
+                    <td className={`${tableCellClass} whitespace-nowrap`}>
                       {alerta.symbol} {alerta.timeframe}
                     </td>
-                    <td className="px-2 py-2 whitespace-nowrap">{alerta.pattern_name}</td>
-                    <td className="px-2 py-2 text-right tabular-nums">
+                    <td className={`${tableCellClass} whitespace-nowrap font-medium`}>
+                      {alerta.pattern_name}
+                    </td>
+                    <td className={`${tableCellClass} text-right tabular-nums`}>
                       {toNumber(alerta.reference_price)?.toFixed(2) ?? "—"}
                     </td>
-                    <td className="px-2 py-2">
+                    <td className={tableCellClass}>
                       <EntregaCelda alerta={alerta} />
                     </td>
                   </tr>
@@ -280,7 +306,7 @@ export default function Alerts() {
           </div>
         )}
       </section>
-    </div>
+    </PageShell>
   );
 }
 
@@ -297,7 +323,7 @@ function EntregaCelda({ alerta }: { alerta: Alert }) {
     sent: "text-emerald-600 dark:text-emerald-400",
     failed: "text-rose-600 dark:text-rose-400",
     skipped: "text-amber-600 dark:text-amber-400",
-    pending: "text-slate-500",
+    pending: "text-slate-500 dark:text-slate-400",
   };
   return (
     <span className={tono[alerta.status]} title={alerta.delivery_error ?? undefined}>
@@ -309,7 +335,10 @@ function EntregaCelda({ alerta }: { alerta: Alert }) {
   );
 }
 
-const VALIDADA: ReadonlySet<AlertValidationStatus> = new Set(["sostenida", "prometedora"]);
+const VALIDADA: ReadonlySet<AlertValidationStatus> = new Set([
+  "sostenida",
+  "prometedora",
+]);
 
 function ReglaCard({
   regla,
@@ -322,31 +351,30 @@ function ReglaCard({
 }) {
   const { config } = regla;
   return (
-    <div
-      className={`rounded border p-3 ${
-        regla.enabled
-          ? "border-slate-200 dark:border-slate-700"
-          : "border-slate-200 opacity-60 dark:border-slate-800"
-      }`}
-    >
+    <div className={`${cardClass} p-4 ${regla.enabled ? "" : "opacity-60"}`}>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="font-medium">{regla.name}</span>
+            <span className="font-semibold text-slate-900 dark:text-slate-100">
+              {regla.name}
+            </span>
             <span className="text-sm text-slate-500 dark:text-slate-400">
               {regla.symbol} {regla.timeframe} · {regla.pattern_name} ·{" "}
               {regla.direction === "bullish" ? "LONG" : "SHORT"}
             </span>
             {!regla.enabled && (
-              <span className="rounded bg-slate-200 px-1.5 py-0.5 text-xs text-slate-600 dark:bg-slate-700 dark:text-slate-300">
+              <span className="rounded-full bg-slate-200 px-2 py-0.5 text-xs font-medium text-slate-600 dark:bg-slate-800 dark:text-slate-300">
                 pausada
               </span>
             )}
           </div>
           <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
-            SL {config.stop_loss_pct === null ? "sin stop" : `${config.stop_loss_pct} %`} · TP{" "}
-            {config.take_profit_pct === null ? "sin objetivo" : `${config.take_profit_pct} %`} ·
-            máx. {config.max_hold ?? "—"} velas
+            SL {config.stop_loss_pct === null ? "sin stop" : `${config.stop_loss_pct} %`} ·{" "}
+            TP{" "}
+            {config.take_profit_pct === null
+              ? "sin objetivo"
+              : `${config.take_profit_pct} %`}{" "}
+            · máx. {config.max_hold ?? "—"} velas
             {!config.base_known && (
               <span
                 className="ml-2 text-xs text-amber-600 dark:text-amber-400"
@@ -356,10 +384,13 @@ function ReglaCard({
               </span>
             )}
           </p>
-          <div className="mt-2 max-w-md">
-            <ValidationBadge status={regla.validation_status} note={regla.validation_note} />
+          <div className="mt-3 max-w-lg">
+            <ValidationBadge
+              status={regla.validation_status}
+              note={regla.validation_note}
+            />
           </div>
-          <div className="mt-1.5 space-y-0.5">
+          <div className="mt-2 space-y-0.5">
             <CoverageBadge coverage={regla.pattern_coverage} />
             {regla.backing_oi_low !== null && regla.backing_oi_high !== null && (
               <p className="text-xs text-slate-500 dark:text-slate-400">
@@ -372,7 +403,7 @@ function ReglaCard({
               </p>
             )}
             {regla.last_evaluation_note && (
-              <p className="text-xs text-slate-400 dark:text-slate-500">
+              <p className="text-xs text-slate-500 dark:text-slate-400">
                 Última evaluación: {regla.last_evaluation_note}
               </p>
             )}
@@ -382,16 +413,17 @@ function ReglaCard({
           <button
             type="button"
             onClick={onToggle}
-            className="rounded border border-slate-300 px-2 py-1 text-xs hover:bg-slate-100 dark:border-slate-600 dark:hover:bg-slate-700"
+            className={secondaryButtonClass}
           >
             {regla.enabled ? "Pausar" : "Activar"}
           </button>
           <button
             type="button"
             onClick={onDelete}
-            className="rounded border border-slate-300 px-2 py-1 text-xs text-rose-600 hover:bg-rose-50 dark:border-slate-600 dark:hover:bg-rose-950/40"
+            className={dangerButtonClass}
+            aria-label={`Borrar la regla ${regla.name}`}
           >
-            <Trash2 className="h-3.5 w-3.5" />
+            <Trash2 className="h-4 w-4" />
           </button>
         </div>
       </div>

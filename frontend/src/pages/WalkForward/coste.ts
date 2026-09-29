@@ -24,7 +24,7 @@ import type { WalkForwardVerdict } from "../../types/walkForward";
  * la salta en vez de abortar las otras. Contarla aqui inflaria el coste que se
  * le enseña al usuario, y el usuario lo pagaria.
  */
-export function combinacionesSimulables(
+export function simulableCombinations(
   takeProfit: readonly (number | null)[],
   stopLoss: readonly (number | null)[],
   maxHolds: readonly number[],
@@ -52,7 +52,7 @@ export function combinacionesSimulables(
  * exacto en pantalla seria mentir por un detalle que el usuario no puede
  * comprobar, y el numero exacto llega igualmente en el 422 del backend.
  */
-export function ventanasEstimadas(
+export function estimatedWindows(
   dias: number,
   windowDays: number,
   oosDays: number,
@@ -70,41 +70,41 @@ export function ventanasEstimadas(
   return count;
 }
 
-export interface CosteEstimado {
-  combinaciones: number;
-  ventanas: number;
-  simulaciones: number;
-  dias: number;
+export interface EstimatedCost {
+  combinations: number;
+  windows: number;
+  simulations: number;
+  days: number;
 }
 
 /** El numero grande de la pantalla, en una sola llamada. */
-export function estimarCoste(params: {
+export function estimateCost(params: {
   takeProfit: readonly (number | null)[];
   stopLoss: readonly (number | null)[];
   maxHolds: readonly number[];
-  dias: number;
+  days: number;
   windowDays: number;
   oosDays: number;
   stepDays: number;
   holdoutDays: number;
-}): CosteEstimado {
-  const combinaciones = combinacionesSimulables(
+}): EstimatedCost {
+  const combinations = simulableCombinations(
     params.takeProfit,
     params.stopLoss,
     params.maxHolds,
   );
-  const ventanas = ventanasEstimadas(
-    params.dias,
+  const windows = estimatedWindows(
+    params.days,
     params.windowDays,
     params.oosDays,
     params.stepDays,
     params.holdoutDays,
   );
   return {
-    combinaciones,
-    ventanas,
-    simulaciones: combinaciones * ventanas,
-    dias: params.dias,
+    combinations,
+    windows,
+    simulations: combinations * windows,
+    days: params.days,
   };
 }
 
@@ -115,14 +115,22 @@ export function estimarCoste(params: {
  * acaba en el mismo dia da 0 dias, y el formulario dice que no sale ninguna
  * ventana de un escaneo que tiene doce meses de velas.
  */
-export function diasDeRango(dateFrom: string, dateTo: string): number {
+export function daysFromRange(dateFrom: string, dateTo: string): number {
   const desde = new Date(dateFrom).getTime();
   const hasta = new Date(dateTo).getTime();
   if (Number.isNaN(desde) || Number.isNaN(hasta) || hasta < desde) return 0;
   return Math.round((hasta - desde) / 86_400_000);
 }
 
-/** Como se muestra una combinacion: `null` es "sin este nivel", no un cero. */
+/**
+ * Como se muestra una combinacion: `null` es "sin este nivel", no un cero.
+ *
+ * Vive aquí y no en las páginas porque se usa en **tres** sitios —el detalle
+ * del walk-forward, el formulario de alta de alertas y la ficha de una regla—,
+ * y la razón por la que existe es la que hizo que existiera `StatusBadge`: tres
+ * copias de un formateador divergen el día que alguien cambia una, y entonces
+ * la misma fila se pinta de dos maneras según la pantalla.
+ */
 export function etiquetaEstrategia(estrategia: {
   take_profit_pct: number | null;
   stop_loss_pct: number | null;

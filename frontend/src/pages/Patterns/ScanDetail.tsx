@@ -552,6 +552,7 @@ export default function ScanDetail() {
               rows={chartRows}
               markers={chart.markers}
               title={`${chart.symbol} · ${chart.timeframe}`}
+              timeframe={chart.timeframe}
               subtitle={`${chart.returned.toLocaleString("es-ES")} velas`}
               highlightTimestamp={highlight}
             />

@@ -1,14 +1,14 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  combinacionesSimulables,
-  diasDeRango,
-  estimarCoste,
+  simulableCombinations,
+  daysFromRange,
+  estimateCost,
   etiquetaCandidata,
   etiquetaEstrategia,
   formatearIC,
   TEXTO_VERDICT,
-  ventanasEstimadas,
+  estimatedWindows,
 } from "./coste";
 
 /**
@@ -28,26 +28,26 @@ import {
  */
 describe("celdas simulables", () => {
   it("cuenta el producto de los tres ejes", () => {
-    expect(combinacionesSimulables([null, 2.0], [1.0, 1.5], [12, 24])).toBe(8);
+    expect(simulableCombinations([null, 2.0], [1.0, 1.5], [12, 24])).toBe(8);
   });
 
   it("excluye la celda sin take profit y sin stop loss", () => {
     // Sin niveles no hay forma de cerrar antes de `max_hold`, y el motor la salta.
     // Contarla inflaria el coste que se le ensena al usuario, y el usuario lo
     // pagaria: seria un boton que dice 2.400 simulaciones y son 1.200.
-    expect(combinacionesSimulables([null], [null], [12, 24])).toBe(0);
+    expect(simulableCombinations([null], [null], [12, 24])).toBe(0);
   });
 
   it("cuenta las celdas con un solo nivel, que si son validas", () => {
     // `sin TP` con SL es una estrategia legitima: cierra por stop o por tiempo.
-    expect(combinacionesSimulables([null], [1.0], [12])).toBe(1);
-    expect(combinacionesSimulables([2.0], [null], [12])).toBe(1);
+    expect(simulableCombinations([null], [1.0], [12])).toBe(1);
+    expect(simulableCombinations([2.0], [null], [12])).toBe(1);
   });
 
   it("no se confunde con contar el producto a pelo", () => {
     // El producto bruto daria 4; el correcto es 3, porque la celda (null, null)
     // no se puede simular.
-    expect(combinacionesSimulables([null, 2.0], [null, 1.0], [12])).toBe(3);
+    expect(simulableCombinations([null, 2.0], [null, 1.0], [12])).toBe(3);
   });
 });
 
@@ -55,18 +55,18 @@ describe("ventanas estimadas", () => {
   it("reparte el rango con el mismo criterio que el motor", () => {
     // 365 dias, ventanas de 90+30 y paso 30: caben 11 enteras (120 dias cada
     // una), y la ultima ventana que no cabe entera no se recorta, se descarta.
-    expect(ventanasEstimadas(365, 90, 30, 30, 0)).toBe(9);
+    expect(estimatedWindows(365, 90, 30, 30, 0)).toBe(9);
   });
 
   it("devuelve cero cuando no cabe ni una ventana entera", () => {
     // Y no "una ventana recortada": una ventana incompleta al final no se
     // recorta, se descarta, porque su OOS no tendria los dias que la ISAssume.
-    expect(ventanasEstimadas(100, 90, 30, 30, 0)).toBe(0);
+    expect(estimatedWindows(100, 90, 30, 30, 0)).toBe(0);
   });
 
   it("descuenta la reserva final antes de repartir", () => {
-    const sinReserva = ventanasEstimadas(365, 90, 30, 90, 0);
-    const conReserva = ventanasEstimadas(365, 90, 30, 90, 120);
+    const sinReserva = estimatedWindows(365, 90, 30, 90, 0);
+    const conReserva = estimatedWindows(365, 90, 30, 90, 120);
     expect(conReserva).toBeLessThan(sinReserva);
   });
 
@@ -74,53 +74,53 @@ describe("ventanas estimadas", () => {
     // Los campos numericos del formulario llegan vacios mientras se teclea, y
     // `Number("")` es 0. Un paso de cero aqui es un bucle infinito colgado en
     // el navegador, no un error visible.
-    expect(ventanasEstimadas(365, 90, 30, 0, 0)).toBe(0);
-    expect(ventanasEstimadas(365, 0, 30, 30, 0)).toBe(0);
-    expect(ventanasEstimadas(365, 90, 0, 30, 0)).toBe(0);
+    expect(estimatedWindows(365, 90, 30, 0, 0)).toBe(0);
+    expect(estimatedWindows(365, 0, 30, 30, 0)).toBe(0);
+    expect(estimatedWindows(365, 90, 0, 30, 0)).toBe(0);
   });
 });
 
-describe("diasDeRango", () => {
+describe("daysFromRange", () => {
   it("cuenta los dias de un rango declarado", () => {
-    expect(diasDeRango("2021-09-01T00:00:00Z", "2021-12-31T00:00:00Z")).toBe(121);
+    expect(daysFromRange("2021-09-01T00:00:00Z", "2021-12-31T00:00:00Z")).toBe(121);
   });
 
   it("da cero en un rango invertido o ilegible, no un numero negativo", () => {
-    expect(diasDeRango("2021-12-31T00:00:00Z", "2021-09-01T00:00:00Z")).toBe(0);
-    expect(diasDeRango("no-es-fecha", "tampoco")).toBe(0);
+    expect(daysFromRange("2021-12-31T00:00:00Z", "2021-09-01T00:00:00Z")).toBe(0);
+    expect(daysFromRange("no-es-fecha", "tampoco")).toBe(0);
   });
 });
 
-describe("estimarCoste", () => {
+describe("estimateCost", () => {
   it("multiplica combinaciones por ventanas", () => {
-    const coste = estimarCoste({
+    const coste = estimateCost({
       takeProfit: [null, 2.0],
       stopLoss: [1.0, 1.5],
       maxHolds: [12, 24],
-      dias: 730,
+      days: 730,
       windowDays: 90,
       oosDays: 30,
       stepDays: 120,
       holdoutDays: 0,
     });
-    expect(coste.combinaciones).toBe(8);
-    expect(coste.ventanas).toBeGreaterThan(0);
-    expect(coste.simulaciones).toBe(coste.combinaciones * coste.ventanas);
+    expect(coste.combinations).toBe(8);
+    expect(coste.windows).toBeGreaterThan(0);
+    expect(coste.simulations).toBe(coste.combinations * coste.windows);
   });
 
   it("da cero cuando el rango no da ninguna ventana, y no un numero pequeno", () => {
-    const coste = estimarCoste({
+    const coste = estimateCost({
       takeProfit: [2.0],
       stopLoss: [1.0],
       maxHolds: [12],
-      dias: 40,
+      days: 40,
       windowDays: 90,
       oosDays: 30,
       stepDays: 30,
       holdoutDays: 0,
     });
-    expect(coste.ventanas).toBe(0);
-    expect(coste.simulaciones).toBe(0);
+    expect(coste.windows).toBe(0);
+    expect(coste.simulations).toBe(0);
   });
 });
 

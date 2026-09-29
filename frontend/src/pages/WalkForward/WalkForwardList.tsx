@@ -4,8 +4,27 @@ import { Loader2, Plus, RefreshCw } from "lucide-react";
 import { Link } from "react-router-dom";
 
 import { StatusBadge } from "../../components/ui/StatusBadge";
+import {
+  EmptyRow,
+  Field,
+  FilterBar,
+  PageHeader,
+  PageShell,
+  errorClass,
+  inputClass,
+  primaryButtonClass,
+  secondaryButtonClass,
+  tableBodyClass,
+  tableCellClass,
+  tableClass,
+  tableHeadCellClass,
+  tableHeadClass,
+} from "../../components/ui/PageShell";
 import { getWalkForwards } from "../../services/walkForwardApi";
-import type { WalkForwardRun, WalkForwardRunStatus } from "../../types/walkForward";
+import type {
+  WalkForwardRun,
+  WalkForwardRunStatus,
+} from "../../types/walkForward";
 import { formatDateTimeEs, formatPercent, toNumber } from "../../utils/format";
 
 /** Tope del backend en `GET /walk-forward/runs` (`page_size` le=100). */
@@ -14,20 +33,16 @@ const PAGE_SIZE = 20;
 /**
  * Lista de walk-forwards.
  *
- * Una columna menos que la lista de backtests y una mas, y las dos son
- * deliberadas:
+ * Dos columnas menos que la de backtests y una más, y las dos son deliberadas:
  *
- * - **Falta** la de win rate. Una sola configuracion no tiene win rate agregado
- *   que signifiquen nada: hay una por ventana OOS, y la media de win rates de
- *   ventanas con distinta duracion no es una cifra que se pueda leer.
- * - **Está** la de simulaciones, que es la que dice cuanto trabajo se ha hecho
- *   de verdad. Es el numero que la regla 4 del Contrato Estadistico exige
+ * - **Falta** la de win rate. Una sola configuración no tiene win rate agregado
+ *   que signifique nada: hay uno por ventana OOS, y la media de ventanas con
+ *   distinta duración y distinto número de operaciones es una cifra que no se
+ *   puede leer.
+ * - **Está** la de simulaciones, que es la que dice cuánto trabajo se ha hecho
+ *   de verdad. Es el número que la regla 4 del Contrato Estadístico exige
  *   publicar, y el que permite distinguir "estuvo dos minutos" de "estuvo dos
  *   minutos probando 1.800 cosas".
- *
- * La columna de resultado va en blanco mientras el run no ha terminado, y no
- * muestra un guion que parezca un cero: un informe a medias no tiene retorno, y
- * un `—` en la columna de la cifra es un dato, no una ausencia.
  */
 export default function WalkForwardList() {
   const [runs, setRuns] = useState<WalkForwardRun[]>([]);
@@ -41,8 +56,7 @@ export default function WalkForwardList() {
     setLoading(true);
     try {
       const data = await getWalkForwards(page, PAGE_SIZE);
-      const filtrados = status ? data.runs.filter((run) => run.status === status) : data.runs;
-      setRuns(filtrados);
+      setRuns(status ? data.runs.filter((r) => r.status === status) : data.runs);
       setTotal(data.total);
       setError(null);
     } catch (err) {
@@ -59,152 +73,149 @@ export default function WalkForwardList() {
   const totalPaginas = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   return (
-    <div className="space-y-4">
-      <header className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-semibold">Walk-forwards</h1>
-          <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
-            Informes de optimización out-of-sample. Cada uno dice cuántas combinaciones evaluó y
-            guarda sus candidatas, incluidas las descartadas.
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Link
-            to="/walk-forward/new"
-            className="inline-flex items-center gap-1 rounded bg-blue-600 px-3 py-1.5 text-sm font-medium text-white"
+    <PageShell>
+      <PageHeader
+        title="Walk-forward"
+        subtitle={
+          <>
+            {total} informe{total === 1 ? "" : "s"}. Cada uno dice cuántas
+            combinaciones evaluó y guarda sus candidatas, incluidas las
+            descartadas.
+          </>
+        }
+        actions={
+          <>
+            <Link to="/walk-forward/new" className={primaryButtonClass}>
+              <Plus className="h-4 w-4" />
+              Nuevo walk-forward
+            </Link>
+            <button
+              type="button"
+              onClick={() => void load()}
+              className={secondaryButtonClass}
+              aria-label="Refrescar"
+            >
+              <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
+              Refrescar
+            </button>
+          </>
+        }
+      />
+
+      <FilterBar>
+        <Field label="Estado">
+          <select
+            value={status}
+            onChange={(e) => {
+              setStatus(e.target.value as WalkForwardRunStatus | "");
+              setPage(1);
+            }}
+            className={inputClass}
           >
-            <Plus className="h-4 w-4" /> Nuevo
-          </Link>
-          <button
-            type="button"
-            onClick={() => void load()}
-            className="inline-flex items-center gap-1 rounded border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-100 dark:border-slate-600 dark:hover:bg-slate-700"
-          >
-            <RefreshCw className="h-4 w-4" />
-          </button>
-        </div>
-      </header>
+            <option value="">Todos</option>
+            <option value="pending">Pendiente</option>
+            <option value="processing">En curso</option>
+            <option value="completed">Completado</option>
+            <option value="failed">Fallido</option>
+            <option value="cancelled">Cancelado</option>
+          </select>
+        </Field>
+      </FilterBar>
 
-      <div className="flex items-center gap-2">
-        <label className="text-sm text-slate-600 dark:text-slate-400">Estado</label>
-        <select
-          value={status}
-          onChange={(event) => {
-            setStatus(event.target.value as WalkForwardRunStatus | "");
-            setPage(1);
-          }}
-          className="rounded border border-slate-300 px-2 py-1 text-sm dark:border-slate-600 dark:bg-slate-800"
-        >
-          <option value="">Todos</option>
-          <option value="pending">Pendiente</option>
-          <option value="processing">En curso</option>
-          <option value="completed">Completado</option>
-          <option value="failed">Fallido</option>
-          <option value="cancelled">Cancelado</option>
-        </select>
-      </div>
+      {error && <p className={errorClass}>{error}</p>}
 
-      {error && (
-        <div
-          role="alert"
-          className="rounded border border-red-300 bg-red-50 p-3 text-sm text-red-700 dark:border-red-800 dark:bg-red-950/40 dark:text-red-300"
-        >
-          {error}
-        </div>
-      )}
-
-      <div className="overflow-x-auto rounded border border-slate-200 dark:border-slate-700">
-        <table className="w-full text-sm">
-          <thead className="bg-slate-50 text-left dark:bg-slate-800">
+      <div className={tableClass}>
+        <table className="w-full text-left text-sm">
+          <thead className={tableHeadClass}>
             <tr>
-              <th className="px-2 py-2">Creado</th>
-              <th className="px-2 py-2">Escaneo</th>
-              <th className="px-2 py-2">Estado</th>
-              <th className="px-2 py-2 text-right">Ventanas</th>
-              <th className="px-2 py-2 text-right">Simulaciones</th>
-              <th className="px-2 py-2 text-right">Retorno OOS</th>
-              <th className="px-2 py-2 text-right">Duración</th>
+              <th className={tableHeadCellClass}>Creado</th>
+              <th className={tableHeadCellClass}>Escaneo</th>
+              <th className={tableHeadCellClass}>Estado</th>
+              <th className={`${tableHeadCellClass} text-right`}>Ventanas</th>
+              <th className={`${tableHeadCellClass} text-right`}>Simulaciones</th>
+              <th className={`${tableHeadCellClass} text-right`}>Retorno OOS</th>
+              <th className={`${tableHeadCellClass} text-right`}>Duración</th>
             </tr>
           </thead>
-          <tbody>
-            {loading && (
+          <tbody className={tableBodyClass}>
+            {loading && runs.length === 0 && (
               <tr>
-                <td colSpan={7} className="px-2 py-8 text-center">
+                <td colSpan={7} className="px-4 py-10 text-center">
                   <Loader2 className="mx-auto h-4 w-4 animate-spin" />
                 </td>
               </tr>
             )}
             {!loading && runs.length === 0 && (
-              <tr>
-                <td colSpan={7} className="px-2 py-8 text-center text-slate-500">
-                  Todavía no hay walk-forwards.
-                </td>
-              </tr>
+              <EmptyRow colSpan={7}>No hay walk-forwards.</EmptyRow>
             )}
-            {runs.map((run) => (
-              <tr
-                key={run.id}
-                className="border-t border-slate-100 hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-800/50"
-              >
-                <td className="px-2 py-2 whitespace-nowrap">
-                  <Link
-                    to={`/walk-forward/runs/${run.id}`}
-                    className="text-blue-600 hover:underline"
+            {runs.map((run) => {
+              const retorno = toNumber(run.oos_return_pct);
+              return (
+                <tr key={run.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50">
+                  <td className={`${tableCellClass} whitespace-nowrap`}>
+                    <Link
+                      to={`/walk-forward/runs/${run.id}`}
+                      className="font-medium text-indigo-600 hover:underline dark:text-indigo-400"
+                    >
+                      {formatDateTimeEs(run.created_at)}
+                    </Link>
+                  </td>
+                  <td className={`${tableCellClass} whitespace-nowrap text-slate-600 dark:text-slate-400`}>
+                    {run.config.symbol} {run.config.timeframe}
+                  </td>
+                  <td className={tableCellClass}>
+                    <StatusBadge status={run.status} />
+                  </td>
+                  <td className={`${tableCellClass} text-right tabular-nums`}>
+                    {run.windows}
+                  </td>
+                  <td className={`${tableCellClass} text-right tabular-nums`}>
+                    {run.simulations.toLocaleString("es-ES")}
+                  </td>
+                  <td
+                    className={`${tableCellClass} text-right font-medium tabular-nums ${
+                      (retorno ?? 0) < 0
+                        ? "text-rose-600 dark:text-rose-400"
+                        : "text-emerald-600 dark:text-emerald-400"
+                    }`}
                   >
-                    {formatDateTimeEs(run.created_at)}
-                  </Link>
-                </td>
-                <td className="px-2 py-2 whitespace-nowrap text-slate-500">
-                  {run.config.symbol} {run.config.timeframe}
-                </td>
-                <td className="px-2 py-2">
-                  <StatusBadge status={run.status} />
-                </td>
-                <td className="px-2 py-2 text-right tabular-nums">{run.windows}</td>
-                <td className="px-2 py-2 text-right tabular-nums">
-                  {run.simulations.toLocaleString("es-ES")}
-                </td>
-                <td
-                  className={`px-2 py-2 text-right tabular-nums ${
-                    (toNumber(run.oos_return_pct) ?? 0) < 0
-                      ? "text-red-600 dark:text-red-400"
-                      : "text-emerald-600 dark:text-emerald-400"
-                  }`}
-                >
-                  {run.status === "completed" ? formatPercent(run.oos_return_pct) : "—"}
-                </td>
-                <td className="px-2 py-2 text-right tabular-nums text-slate-500">
-                  {run.elapsed_ms !== null ? `${Math.round(run.elapsed_ms / 1000)} s` : "—"}
-                </td>
-              </tr>
-            ))}
+                    {/* En blanco mientras el run no termina: un guion con el
+                        mismo aspecto que un cero se lee como un cero. */}
+                    {run.status === "completed" ? formatPercent(run.oos_return_pct) : "—"}
+                  </td>
+                  <td className={`${tableCellClass} text-right tabular-nums text-slate-500`}>
+                    {run.elapsed_ms !== null ? `${Math.round(run.elapsed_ms / 1000)} s` : "—"}
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
 
       {totalPaginas > 1 && (
-        <div className="flex items-center justify-between text-sm">
+        <div className="mt-4 flex items-center justify-between">
           <button
             type="button"
             onClick={() => setPage((p) => Math.max(1, p - 1))}
             disabled={page === 1}
-            className="rounded border border-slate-300 px-3 py-1 disabled:opacity-50 dark:border-slate-600"
+            className={secondaryButtonClass}
           >
             Anterior
           </button>
-          <span className="text-slate-500">
-            Página {page} de {totalPaginas} · {total} informes
+          <span className="text-sm text-slate-500 dark:text-slate-400">
+            Página {page} de {totalPaginas}
           </span>
           <button
             type="button"
             onClick={() => setPage((p) => Math.min(totalPaginas, p + 1))}
             disabled={page === totalPaginas}
-            className="rounded border border-slate-300 px-3 py-1 disabled:opacity-50 dark:border-slate-600"
+            className={secondaryButtonClass}
           >
             Siguiente
           </button>
         </div>
       )}
-    </div>
+    </PageShell>
   );
 }

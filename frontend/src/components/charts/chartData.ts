@@ -135,12 +135,50 @@ export function toLineData(rows: ChartRow[], name: string): LineData[] {
   return points;
 }
 
-/** Ventana de tiempo centrada en una vela, en unidades de lightweight-charts. */
+/**
+ * Segundos que dura una vela del timeframe dado.
+ *
+ * Existe porque `highlightRange` multiplicaba por 60 fijos: el numero era una
+ * ventana de **minutos**, no de velas, y eso solo es verdad en velas de 1
+ * minuto. En un grafico de 1h «60» encuadraba dos velas, y en uno de 1d el
+ *Recentrar no llegaba ni a la vela entera. El numero de velas wanted es
+ * «cuantas velas de contexto ver», y para pasarlo a segundos hay que saber
+ * cuanto dura una vela aqui.
+ *
+ * Un timeframe que no se reconoce cae a 1 minuto, que es lo que hacen el resto
+ * de pantallas del proyecto con los datos que no saben leer.
+ */
+export function timeframeSeconds(timeframe: string): number {
+  const partes = /^(\d+)([mhdw])$/.exec(timeframe.trim());
+  if (!partes) return 60;
+  const cantidad = Number(partes[1]);
+  switch (partes[2]) {
+    case "m":
+      return cantidad * 60;
+    case "h":
+      return cantidad * 3600;
+    case "d":
+      return cantidad * 86400;
+    default:
+      return cantidad * 604800;
+  }
+}
+
+/**
+ * Ventana de tiempo centrada en una vela, en unidades de lightweight-charts.
+ *
+ * `candlesShown` es el numero de **velas** de contexto a cada lado, y
+ * `candleSeconds` lo que dura una vela en este grafico. El parametro segundo es
+ * opcional para no romper a quien llame con dos argumentos, pero el sitio que
+ * importa, `UnifiedChart`, lo pasa siempre: sin el, la ventana depende de que
+ * el timeframe sea de un minuto.
+ */
 export function highlightRange(
   highlightSeconds: number,
   candlesShown: number,
+  candleSeconds = 60,
 ): { from: Time; to: Time } {
-  const window = candlesShown * 60;
+  const window = candlesShown * candleSeconds;
   return {
     from: (highlightSeconds - window) as Time,
     to: (highlightSeconds + window) as Time,

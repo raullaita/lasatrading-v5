@@ -4,6 +4,7 @@ import {
   type ChartRow,
   colorForIndicator,
   highlightRange,
+  timeframeSeconds,
   indicatorNames,
   fromPreviewRows,
   toChartRows,
@@ -136,12 +137,47 @@ describe("toLineData", () => {
   });
 });
 
+describe("timeframeSeconds", () => {
+  it.each([
+    ["1m", 60],
+    ["15m", 900],
+    ["1h", 3600],
+    ["4h", 14400],
+    ["1d", 86400],
+    ["1w", 604800],
+  ])("%s son %i segundos", (tf, esperado) => {
+    expect(timeframeSeconds(tf)).toBe(esperado);
+  });
+
+  it("un timeframe que no se reconoce cae a 1 minuto", () => {
+    // Igual que el resto del proyecto con los datos que no sabe leer: un valor
+    // por defecto conocido, no un throw a mitad de un render.
+    expect(timeframeSeconds("")).toBe(60);
+    expect(timeframeSeconds("diario")).toBe(60);
+  });
+});
+
 describe("highlightRange", () => {
   it("centra la ventana en la vela indicada", () => {
     const { from, to } = highlightRange(1000, 60);
 
     expect(from).toBe(1000 - 3600);
     expect(to).toBe(1000 + 3600);
+  });
+
+  it("la ventana se mide en velas del timeframe, no en minutos fijos", () => {
+    // 60 velas de 1h son 60 horas a cada lado. Con los 60 s fijos de antes
+    // quedaban dos velas en pantalla, que no es «entrar a ver la deteccion».
+    const { from, to } = highlightRange(1_000_000, 60, timeframeSeconds("1h"));
+
+    expect(from).toBe(1_000_000 - 60 * 3600);
+    expect(to).toBe(1_000_000 + 60 * 3600);
+  });
+
+  it("el mismo timeframe da la misma ventana", () => {
+    expect(highlightRange(0, 60, timeframeSeconds("4h"))).toEqual(
+      highlightRange(0, 60, timeframeSeconds("4h")),
+    );
   });
 });
 
