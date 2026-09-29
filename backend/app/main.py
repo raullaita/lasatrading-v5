@@ -3,6 +3,10 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import get_settings
+from app.modules.alerts import (
+    models as _alerts_models,  # noqa: F401  # metadata Alembic
+)
+from app.modules.alerts.router import router as alerts_router
 from app.modules.backtesting import (
     models as _backtesting_models,  # noqa: F401  # metadata Alembic
 )
@@ -50,6 +54,7 @@ app.include_router(data_import_router)
 app.include_router(data_router)
 app.include_router(features_router)
 app.include_router(patterns_router)
+app.include_router(alerts_router)
 app.include_router(backtesting_router)
 app.include_router(walk_forward_router)
 

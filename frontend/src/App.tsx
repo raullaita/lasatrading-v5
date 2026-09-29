@@ -38,6 +38,8 @@ const ScanDetail = lazy(() => import("./pages/Patterns/ScanDetail"));
 const BacktestList = lazy(() => import("./pages/Backtesting/BacktestList"));
 const NewBacktest = lazy(() => import("./pages/Backtesting/NewBacktest"));
 const BacktestDetail = lazy(() => import("./pages/Backtesting/BacktestDetail"));
+const Alerts = lazy(() => import("./pages/Alerts/Alerts"));
+const NewAlertRule = lazy(() => import("./pages/Alerts/NewAlertRule"));
 const WalkForwardList = lazy(() => import("./pages/WalkForward/WalkForwardList"));
 const NewWalkForward = lazy(() => import("./pages/WalkForward/NewWalkForward"));
 const WalkForwardDetail = lazy(() => import("./pages/WalkForward/WalkForwardDetail"));
@@ -165,19 +167,6 @@ function Welcome() {
   );
 }
 
-function ModulePlaceholder({ module }: { module: string }) {
-  return (
-    <main className="flex h-screen flex-1 items-center justify-center bg-slate-50 p-8 dark:bg-slate-950">
-      <div className="mx-auto w-full max-w-lg rounded-2xl border border-slate-200 bg-white p-10 text-center shadow-sm dark:border-slate-800 dark:bg-slate-900">
-        <h1 className="text-xl font-bold text-slate-900 dark:text-slate-100">{module}</h1>
-        <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
-          Este módulo se implementará en futuras tareas del proyecto.
-        </p>
-      </div>
-    </main>
-  );
-}
-
 export default function App() {
   return (
     <div className="flex min-h-screen bg-slate-50 dark:bg-slate-950">
@@ -216,7 +205,8 @@ export default function App() {
           <Route path="/walk-forward" element={<WalkForwardList />} />
           <Route path="/walk-forward/new" element={<NewWalkForward />} />
           <Route path="/walk-forward/runs/:runId" element={<WalkForwardDetail />} />
-          <Route path="/alerts" element={<ModulePlaceholder module="Alertas" />} />
+          <Route path="/alerts" element={<Alerts />} />
+          <Route path="/alerts/new" element={<NewAlertRule />} />
           <Route
             path="*"
             element={

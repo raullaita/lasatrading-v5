@@ -171,6 +171,23 @@ class WalkForwardService:
         )
 
     @staticmethod
+    def _base_por_defecto() -> dict:
+        """La estrategia base que usa un walk-forward, con sus defaults incluidos.
+
+        Se persiste **entera** y no solo los tres ejes que barre la rejilla. Sin
+        esto, un informe se puede reproducir solo mientras los defaults de
+        ``engine.StrategyConfig`` no cambien: si mañana el coste pasa de 4 bps a
+        6, los informes de hace un año dicen una cosa y el motor hace otra, sin
+        que nada diga que han dejado de concordar. Y la 5.5 dejo demostrado que
+        un informe que no se puede reproducir no es evidencia, es una opinion.
+        """
+        base = base_strategy(
+            SweepGrid(take_profit_pcts=(2.0,), stop_loss_pcts=(1.0,), max_holds=(24,)),
+            1000.0,
+        )
+        return base.as_dict()
+
+    @staticmethod
     def _grid(config: WalkForwardCreateIn) -> SweepGrid:
         return SweepGrid(
             take_profit_pcts=tuple(config.grid.take_profit_pcts),
@@ -268,8 +285,11 @@ class WalkForwardService:
                 "regimes_declared": config.regimes_declared,
                 "max_simulations": config.max_simulations,
                 "minutes_per_candle": minutos,
-                "symbols": scan.symbol,
+                "symbol": scan.symbol,
                 "timeframe": scan.timeframe,
+                # La estrategia base completa, para que el informe sea
+                # reproducible y no dependa de los defaults del motor.
+                "base_strategy": WalkForwardService._base_por_defecto(),
             },
             grid={
                 "take_profit_pcts": list(config.grid.take_profit_pcts),
