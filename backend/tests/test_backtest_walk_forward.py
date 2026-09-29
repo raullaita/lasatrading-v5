@@ -39,6 +39,7 @@ from app.modules.backtesting.walk_forward import (
     WindowMetrics,
     WindowOutcome,
     WindowSpec,
+    assert_continuity,
     assert_isolation,
     block_bootstrap_ci,
     build_candidate,
@@ -1378,3 +1379,87 @@ def test_el_benchmark_encadenado_es_la_composicion_de_sus_ventanas():
         f"el benchmark encadenado da {real:+.2f}% y la composición de las "
         f"ventanas da {esperado:+.2f}%"
     )
+
+
+# ---------------------------------------------------------------------------
+# Continuidad del rango
+# ---------------------------------------------------------------------------
+def test_un_rango_con_un_hueco_dentro_se_rechaza():
+    """El hueco que hace el daño no es que falten ventanas: es que las ventanas
+    vacias cuentan en el bootstrap.
+
+    ``build_windows`` solo mira el primer y el último timestamp, así que un rango
+    con un agujero en medio produce ventanas **dentro del agujero**: cuentan
+    igual, no tienen velas ni señales, y el número de ventanas es el tamaño de
+    la muestra del IC95%. Treinta ventanas de las que veinte están vacías dan un
+    intervalo estrecho y un veredicto sobre siete ventanas reales.
+    """
+    # 200 dias con 80 dias centralmente borrados: el rango sigue siendo lo
+    # bastante largo para que quepan ventanas, y el hueco esta en medio, que es
+    # el caso que `build_windows` no ve porque solo mira los dos extremos.
+    marco = velas(24 * 200)
+    con_hueco = pd.concat([marco.iloc[: 24 * 60], marco.iloc[24 * 140 :]])
+    senales = señales(marco)
+
+    with pytest.raises(WalkForwardError) as exc:
+        run_walk_forward(
+            con_hueco,
+            senales,
+            StrategyConfig(take_profit_pct=2.0, stop_loss_pct=1.0, max_hold=12),
+            REJILLA,
+            spec(window_days=30, oos_days=15, step_days=15, min_windows=1),
+        )
+
+    mensaje = str(exc.value)
+    assert "no es continuo" in mensaje
+    assert "hueco" in mensaje
+    assert "rango continuo" in mensaje, (
+        "el mensaje tiene que decir que hacer, no solo que esta mal"
+    )
+
+
+def test_un_rango_continuo_pasa_el_control():
+    """El control tiene que dejar pasar el caso bueno, o no sirve de nada."""
+    marco = velas(24 * 60)
+
+    run_walk_forward(
+        marco,
+        señales(marco),
+        StrategyConfig(take_profit_pct=2.0, stop_loss_pct=1.0, max_hold=12),
+        REJILLA,
+        spec(window_days=20, oos_days=10, step_days=10, min_windows=1),
+    )
+
+
+def test_el_control_admite_una_serie_con_una_vela_perdida():
+    """Perder una vela suelta no es un hueco: es una vela que falta.
+
+    A 1h, un umbral de una hora rechazaria cualquier perdida aislada de datos, y el
+    motor dejaria de funcionar sobre series con un hueco de mantenimiento. El
+    umbral son cuatro velas, o un dia y medio, lo que sea mayor.
+    """
+    marco = velas(24 * 60)
+    sin_una = marco.drop(marco.index[500])
+
+    assert_continuity(sin_una, minutos_por_vela=60)
+
+
+def test_el_control_admite_un_fin_de_semana_en_series_diarias():
+    """Con velas diarias, un finde es una pausa del mercado y no datos que faltan.
+
+    Si el umbral fuera "un dia", toda serie diaria con fines de semana se
+    rechazaria, que es la mitad de las series de cualquier exchange.
+    """
+    diario = pd.DataFrame(
+        {
+            "open": [100.0] * 60,
+            "high": [101.0] * 60,
+            "low": [99.0] * 60,
+            "close": [100.5] * 60,
+            "volume": [10.0] * 60,
+        },
+        index=pd.date_range(T0, periods=60, freq="D", tz="UTC", name="timestamp"),
+    )
+    con_hueco = pd.concat([diario.iloc[:30], diario.iloc[32:]])
+
+    assert_continuity(con_hueco, minutos_por_vela=1440)

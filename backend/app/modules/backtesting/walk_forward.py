@@ -235,6 +235,55 @@ def build_windows(
     return windows
 
 
+def assert_continuity(
+    candles: pd.DataFrame,
+    minutos_por_vela: int,
+    multiplicador: int = 4,
+) -> None:
+    """Rechaza un rango con huecos internos, y dice donde estan.
+
+     ``build_windows`` solo mira el primer y el ultimo timestamp, asi que un
+     rango con un agujero en medio produce ventanas **dentro del agujero**:
+    icuenta igual, no tienen velas ni señales, y salen como "sin seleccion
+     posible" en un informe que parece completo.
+
+     Y el daño no es que falten ventanas: es al reves. Las ventanas vacias se
+     cuentan en `windows`, y el numero de ventanas es el tamaño de la muestra
+     del bootstrap por bloques. Treinta ventanas de las que veinte no tienen ni
+     una vela dan un IC95% estrecho y un veredicto `sostenida` sobre siete
+     ventanas reales. Es la confianza inventada mas cara que puede tener este
+     modulo, y sale de contar ventanas que no existen.
+
+     El umbral no es "un hueco" sino "un hueco mas grande de lo que un mercado
+     abierto deja": cuatro veces la duracion de la vela, con un minimo de un dia
+     y medio para que un fin de semana en velas diarias no se confunda con datos
+     que faltan.
+    """
+    if candles.empty or len(candles) < 2:
+        return
+    umbral = pd.Timedelta(minutes=max(minutos_por_vela * multiplicador, 2_160))
+    indice = candles.index
+    saltos = indice.to_series().diff()
+    huecos = saltos[saltos > umbral]
+    if huecos.empty:
+        return
+    primero = indice[0]
+    ultimo = indice[-1]
+    detalle = []
+    for posicion, salto in huecos.head(5).items():
+        desde = indice[indice < posicion][-1]
+        detalle.append(f"{desde:%Y-%m-%d} → {posicion:%Y-%m-%d} ({salto.days} días)")
+    extra = "" if len(huecos) <= 5 else f" (y {len(huecos) - 5} más)"
+    raise WalkForwardError(
+        f"El rango no es continuo: {len(huecos)} hueco(s) de más de "
+        f"{umbral.days} días, el primero en {detalle[0]}{extra}. El rango va del "
+        f"{primero:%Y-%m-%d} al {ultimo:%Y-%m-%d} pero entre medias no hay velas. "
+        "Un walk-forward sobre un rango con huecos contaria ventanas vacias, y "
+        "esas ventanas cuentan en el intervalo de confianza: dariá un veredicto "
+        "sobre siete ventanas reales como si fueran treinta. Usa un rango continuo."
+    )
+
+
 def assert_isolation(windows: Sequence[Window]) -> None:
     """Comprueba lo que un roll-forward **si** garantiza.
 
@@ -922,6 +971,7 @@ def run_walk_forward(
     if minutos_por_vela < 1:
         raise WalkForwardError("minutos_por_vela debe ser >= 1")
 
+    assert_continuity(candles, minutos_por_vela)
     ventanas = build_windows(candles.index[0], candles.index[-1], spec)
     assert_isolation(ventanas)
     combinaciones = _combinaciones_validas(grid)
