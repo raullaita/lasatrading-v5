@@ -520,7 +520,90 @@ propios y la suite completa en verde (333 tests).
   mercado, no código, y la base de desarrollo no puede ser tocada por pytest
   (`conftest.py` usa `lasa_test`).
 
-### Lo que queda para el Paso 2
+### Dos defectos más que encontró la verificación final
 
-Modelos, migración, servicio, tarea Celery, router y frontend. Nada de eso está
-escrito todavía.
+**3. Rangos con huecos: el motor contaba ventanas que no existían.**
+
+`build_windows` solo mira el primer y el último timestamp, así que un rango con
+un agujero en medio produce ventanas **dentro del agujero**: cuentan igual, no
+tienen velas ni señales, y salen como "sin selección posible" en un informe que
+parece completo.
+
+El daño no es que falten ventanas, es al revés. Las ventanas vacías se cuentan
+en `windows`, y el número de ventanas **es el tamaño de la muestra del bootstrap
+por bloques**. Treinta ventanas de las que veinte están vacías dan un IC95%
+estrecho y un veredicto `sostenida` sobre siete ventanas reales. Es la confianza
+inventada más cara que puede tener este módulo.
+
+Comprobado sobre los datos reales: BTCUSDT 1h cubre 2021-09→2026-09 pero con un
+hueco de **1.461 días** en medio, y tratado como serie continua daría 27
+ventanas de las que **20 caerían dentro del hueco**. Se añadió
+`assert_continuity`, que rechaza el rango y dice cuántos huecos hay, dónde está
+el primero y qué hacer.
+
+**4. El IC95% se calculaba sobre PnL en moneda, sumando, en vez de sobre
+retornos, componiendo.** Eran dos fallos encadenados en la misma función:
+
+- **Unidades**: el bootstrap sumaba PnL en divisa, y el resultado se comparaba
+  contra el cero para dictar el veredicto y se pintaba al lado de
+  `oos_return_pct`, que es un porcentaje. Sin normalizar, el intervalo escalaba
+  con el capital inicial y no era comparable con la cifra de al lado.
+- **Composición**: las ventanas se **sumaban** en vez de componerse. Con una
+  suma, nueve ventanas del +80% dan un techo de +720%, que es dinero que el
+  capital no puede llegar a hacer.
+
+Y encima, componer multiplicando factores y remuestrear esos productos hace que
+la cola derecha estalle. Medido sobre el caso real, el límite superior era
+**+1128%** sobre una estimación puntual de +74%. No era una cota de riesgo: era
+un número que marea y que en pantalla hace dudar de todo lo demás de la
+pantalla.
+
+El arreglo compone en **espacio logarítmico**, donde componer es sumar
+(`sum(log1p(r))`), con `expm1` al final, y devuelve el intervalo **en
+porcentaje**. El mismo caso real:
+
+| | Estimación puntual | IC95% |
+| --- | --- | --- |
+| Antes (lineal, PnL) | +73,71% | [+70,1; **+1128,1**]% |
+| Ahora (logarítmico, %) | +73,71% | [**+1,7**; **+173,3**]% |
+
+El intervalo cae ahora sobre su propia estimación puntual, que es lo que un
+intervalo tiene que hacer.
+
+Y un aviso sobre lo que **no** cambió solo por el arreglo de escala: el veredicto
+de la candidata elegida dentro de la muestra pasó de `sostenida` a `prometedora`,
+porque su límite inferior real era −0,8%. El `sostenida` anterior venía de
+comparar mal las unidades, no de que el intervalo excluyera el cero. El arreglo
+no es solo cosmético: **corrige una decisión**, y la corrige hacia el lado
+prudente.
+
+### Estado: qué está validado y qué no
+
+**Validado con 389 días de BTCUSDT 1h.** Produce veredictos honestos: ninguna
+configuración llega a `sostenida` con la rejilla de 18 combinaciones que la
+pantalla ofrece por defecto, y la causa está medida y es correcta — con 18
+combinaciones sobre 9 ventanas, el ganador dentro de la muestra cambia casi
+siempre y ninguna acumula las 5 ventanas mínimas. Eso *es* un hallazgo: la
+elección in-sample no es consistente, que es la firma del sobreajuste.
+
+Con una rejilla de 3 combinaciones aparece una `sostenida` (`TP 2,0 / SL 1,0 /
+24v` sobre BTCUSDT 1h 2022-01→06), y se sometió a las dos pruebas que se le
+pueden hacer a un hallazgo dudoso:
+
+- **Estabilidad**: `sostenida` en 10 de 10 semillas del bootstrap.
+- **Sesgo de selección**: evaluada con `evaluate_fixed`, sin que ninguna ventana
+  de in-sample la elija y sobre las 9 ventanas, da **+73,71%** frente al
+  +48,07% de la candidata. Quitar la selección **mejora** el resultado, que es
+  lo contrario del sesgo de selección.
+
+**Lo que no está validado**, y hay que decirlo sin rodeos: un tramo de 302 días
+de un solo símbolo no es evidencia estadística. Para veredictos `sostenida` con
+rejillas grandes hacen falta **años de datos continuos**, y esta base tiene 389
+días reales con señales. La compra de datos es una tarea de importación, no de
+este motor, y el motor ya está listo para ella: acepta el rango que le den y
+rechaza los que tengan huecos.
+
+### Lo que queda del Paso 2
+
+Nada. La tarea está completa: motor puro, persistencia, API, tarea Celery,
+pantallas y verificación E2E sobre los tres regímenes reales.
